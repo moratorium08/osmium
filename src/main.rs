@@ -4,8 +4,8 @@
 
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
-    let uart = 0x1001_3000 as *mut u8;
-    for c in b"Hello from Rust!".iter() {
+    let uart = 0x10004 as *mut u8;
+    for c in b"Hello from Rust!\n".iter() {
         unsafe {
             *uart = *c as u8;
         }
