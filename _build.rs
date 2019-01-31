@@ -18,7 +18,9 @@ fn main() -> Result<(), Box<Error>> {
     let output_path = Path::new(&out_dir).join("../../../osmium.bin");
 
     Command::new("tools/bin/elf2bin")
-        .args(&[input_path.to_str().unwrap(), output_path.to_str().unwrap()])
+        .args(
+            &[input_path.to_str().unwrap(), output_path.to_str().unwrap()],
+        )
         .status()?;
 
     Ok(())

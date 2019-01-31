@@ -41,4 +41,3 @@ fn read_byte() -> u8 {
         *UART_RX
     }
 }
-
