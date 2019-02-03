@@ -5,3 +5,7 @@ authors = ["katsurahiroyuki"]
 
 [build-dependencies]
 cc = "1.0.25"
+
+[dependencies]
+array-init = "0.0.4"
+bitflags = "1.0.4"

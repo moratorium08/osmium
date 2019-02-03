@@ -52,7 +52,7 @@ fn bit_clear(addr: u16, bitvec: u32) {
 }
 
 const SATP_ADDR: u16 = 0x180;
-struct SATP {
+pub struct SATP {
     pub paging_on: bool,
     pub ppn: u32
 }
@@ -62,27 +62,27 @@ impl SATP {
         let paging_on = if self.paging_on {1} else {0};
         (paging_on << 31) | self.ppn
     }
-    fn read() -> SATP {
+    pub fn read() -> SATP {
         let v = read(SATP_ADDR);
         SATP{paging_on: utils::bit_range(v, 31, 32) == 1,
              ppn: utils::bit_range(v, 0, 22)}
     }
-    fn commit(&self) {
+    pub fn commit(&self) {
         let v = self.to_u32();
         write(SATP_ADDR, v);
     }
-    fn write(paging_on: bool, ppn: u32) {
+    pub fn write(paging_on: bool, ppn: u32) {
         SATP{paging_on, ppn}.commit();
     }
-    fn enable_paging() {
+    pub fn enable_paging() {
         let v = SATP{paging_on: true, ppn: 0}.to_u32();
         bit_set(SATP_ADDR, v);
     }
-    fn disable_paging() {
+    pub fn disable_paging() {
         let v = SATP{paging_on: true, ppn: 0}.to_u32();
         bit_clear(SATP_ADDR, v);
     }
-    fn set_ppn(ppn: u32) {
+    pub fn set_ppn(ppn: u32) {
         let mut satp = SATP::read();
         satp.ppn = ppn;
         satp.commit();

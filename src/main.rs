@@ -4,11 +4,14 @@
 #![feature(asm)]
 
 #[macro_use]
+extern crate bitflags;
+extern crate array_init;
+
+#[macro_use]
 pub mod uart;
 pub mod csr;
 pub mod paging;
 pub mod utils;
-
 
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
