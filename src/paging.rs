@@ -1,4 +1,5 @@
 use array_init::array_init;
+use core::ops;
 use csr;
 
 const MEM_SIZE: usize = 2 * (1 << 9);
@@ -23,10 +24,31 @@ impl PhysAddr {
         let size = PGSIZE as u64;
         PhysAddr(i * size)
     }
+    pub fn start_addr(&self) -> u64 {
+        self.0 & 0x3fffff000 // 34 bit
+    }
+    pub fn floor_pgsize(self) -> PhysAddr {
+        PhysAddr(self.start_addr())
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VirtAddr(u32);
+
+impl VirtAddr {
+    pub fn new(addr: u32) -> VirtAddr {
+        VirtAddr(addr)
+    }
+    pub fn page_start_addr(&self) -> u32 {
+        self.0 & 0xfffff000
+    }
+
+    pub fn as_mut_ptr<T>(self) -> *mut T {
+        let addr = self.0;
+        let addr: *mut T = addr as *mut T;
+        addr
+    }
+}
 
 bitflags! {
     struct Flag: u32{
@@ -38,13 +60,37 @@ bitflags! {
     }
 }
 
+#[derive(Clone, Copy)]
 struct Page {
     ref_count: u32,
     addr: VirtAddr,
 }
 
-impl Page {}
+impl Page {
+    pub fn from_addr(addr: VirtAddr) -> Page {
+        Page { ref_count: 0, addr }
+    }
+    pub fn base_addr(&self) -> VirtAddr {
+        self.addr
+    }
+    pub fn vpn1(&self) -> u32 {
+        self.addr.page_start_addr() >> 22
+    }
+    pub fn vpn0(&self) -> u32 {
+        (self.addr.page_start_addr() >> 12) & 0x3ff
+    }
+    pub fn vpns(&self) -> [u32; 2] {
+        let vpn1 = self.vpn1();
+        let vpn0 = self.vpn0();
+        [vpn0, vpn1]
+    }
+    pub fn from_vpns(vpns: [u32; 2]) -> Page {
+        let addr = VirtAddr::new((vpns[1] << 22) | (vpns[0] << 12));
+        Page { ref_count: 0, addr }
+    }
+}
 
+#[derive(Clone, Copy)]
 struct Frame {
     addr: PhysAddr,
 }
@@ -57,12 +103,23 @@ impl Frame {
     pub fn from_addr(addr: PhysAddr) -> Frame {
         Frame { addr }
     }
+
+    pub fn to_ppn(&self) -> u32 {
+        /* 34 -> 32(22) bits */
+        (self.addr.floor_pgsize().0 >> 2) as u32
+    }
 }
 
 // Fixed size memory allocator by 'stack-like' simple data structure
 struct Allocator {
     frames: [Frame; N_FRAMES],
     stack: usize,
+}
+
+enum PageError {
+    FailedToAllocMemory,
+    ProgramError(&'static str),
+    MapError,
 }
 
 impl Allocator {
@@ -79,16 +136,44 @@ impl Allocator {
         }
         Allocator { frames, stack }
     }
-    pub fn alloc() {}
+    pub fn alloc(&mut self) -> Result<Frame, PageError> {
+        if self.stack == 0 {
+            Err(PageError::FailedToAllocMemory)
+        } else {
+            self.stack -= 1;
+            Ok(self.frames[self.stack].clone())
+        }
+    }
 
-    pub fn dealloc() {}
+    pub fn dealloc(&mut self, frame: Frame) -> Result<(), PageError> {
+        if self.stack == N_FRAMES {
+            Err(PageError::ProgramError("frame stack overflow"))
+        } else {
+            self.frames[self.stack] = frame;
+            self.stack += 1;
+            Ok(())
+        }
+    }
 }
-
-impl Page {}
 
 #[derive(Clone)]
 pub struct PageTableEntry {
     entry: u32,
+}
+
+impl PageTableEntry {
+    fn zero() -> PageTableEntry {
+        PageTableEntry { entry: 0 }
+    }
+    fn flag(&self) -> Flag {
+        Flag::from_bits_truncate(self.entry)
+    }
+    fn is_valid(&self) -> bool {
+        self.flag().contains(Flag::VALID)
+    }
+    fn set_frame(&mut self, frame: Frame, flag: Flag) {
+        self.entry = frame.to_ppn() | flag.bits()
+    }
 }
 
 #[repr(align(4096))]
@@ -97,14 +182,79 @@ pub struct PageTable {
     entries: [PageTableEntry; PAGE_ENTRY_SIZE],
 }
 
-struct Directory<'a> {
+impl PageTable {
+    fn init(&mut self) {
+        for i in 0..PAGE_ENTRY_SIZE {
+            self.entries[i] = PageTableEntry::zero();
+        }
+    }
+}
+
+impl ops::Index<usize> for PageTable {
+    type Output = PageTableEntry;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.entries[index]
+    }
+}
+
+impl ops::IndexMut<usize> for PageTable {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.entries[index]
+    }
+}
+
+struct Map<'a> {
     dir: &'a mut PageTable,
 }
 
-impl<'a> Directory<'a> {
-    pub fn new(dir: &'a mut PageTable) -> Directory {
-        Directory { dir }
+impl<'a> Map<'a> {
+    pub fn new(dir: &'a mut PageTable) -> Map {
+        Map { dir }
     }
 
-    pub fn map(&mut self, page: Page, frame: Frame, flags: Flag, allocator: &mut Allocator) {}
+    pub fn create_next_table(
+        entry: &'a mut PageTableEntry,
+        next_table_page: Page,
+        allocator: &mut Allocator,
+    ) -> Result<&'a mut PageTable, PageError> {
+        let initialize = if !entry.is_valid() {
+            let frame = allocator.alloc()?;
+            entry.set_frame(frame, Flag::VALID | Flag::READ | Flag::WRITE);
+            true
+        } else {
+            false
+        };
+
+        let ptr: *mut PageTable = next_table_page.base_addr().as_mut_ptr();
+        let table: &mut PageTable = unsafe { &mut (*ptr) };
+
+        if initialize {
+            table.init();
+        }
+        Ok(table)
+    }
+
+    pub fn map(
+        &mut self,
+        page: Page,
+        frame: Frame,
+        flag: Flag,
+        allocator: &mut Allocator,
+    ) -> Result<(), PageError> {
+        let vpn1_page = vpn1_page(page);
+        let vpn1 =
+            Map::create_next_table(&mut self.dir[page.vpn1() as usize], vpn1_page, allocator)?;
+        let entry = &mut vpn1[page.vpn0() as usize];
+
+        if entry.is_valid() {
+            return Err(PageError::ProgramError("tried to map already mapped page"));
+        }
+        entry.set_frame(frame, flag);
+
+        Ok(())
+    }
+}
+
+fn vpn1_page(page: Page) -> Page {
+    Page::from_vpns([page.vpn1(), RECURSIVE_ENTRY as u32])
 }
