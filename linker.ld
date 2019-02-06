@@ -30,4 +30,5 @@ SECTIONS
     {
         *(.bss bss.*)
     }
+    PROVIDE(kernel_end = .);
 }

@@ -6,8 +6,8 @@ const MEM_SIZE: usize = 2 * (1 << 9);
 const PGSIZE: usize = 4096;
 const N_FRAMES: usize = MEM_SIZE / PGSIZE;
 const PAGE_ENTRY_SIZE: usize = 4;
-const PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
-const RECURSIVE_ENTRY: usize = PAGE_ENTRY - 2;
+const N_PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
+const RECURSIVE_ENTRY: usize = N_PAGE_ENTRY - 2;
 
 const KERN_END: usize = 0x80000; // TODO: use linker to specify where it should be
 
@@ -19,6 +19,9 @@ fn start_paging() {
 pub struct PhysAddr(u64);
 
 impl PhysAddr {
+    pub fn new(addr: u32) -> PhysAddr {
+        PhysAddr(0)
+    }
     pub fn from_page_index(i: usize) -> PhysAddr {
         let i = i as u64;
         let size = PGSIZE as u64;
@@ -51,7 +54,7 @@ impl VirtAddr {
 }
 
 bitflags! {
-    struct Flag: u32{
+    pub struct Flag: u32{
         const VALID = 1 << 0;
         const READ  = 1 << 1;
         const WRITE = 1 << 2;
@@ -61,7 +64,7 @@ bitflags! {
 }
 
 #[derive(Clone, Copy)]
-struct Page {
+pub struct Page {
     ref_count: u32,
     addr: VirtAddr,
 }
@@ -91,7 +94,7 @@ impl Page {
 }
 
 #[derive(Clone, Copy)]
-struct Frame {
+pub struct Frame {
     addr: PhysAddr,
 }
 
@@ -111,12 +114,12 @@ impl Frame {
 }
 
 // Fixed size memory allocator by 'stack-like' simple data structure
-struct Allocator {
+pub struct Allocator {
     frames: [Frame; N_FRAMES],
     stack: usize,
 }
 
-enum PageError {
+pub enum PageError {
     FailedToAllocMemory,
     ProgramError(&'static str),
     MapError,
@@ -156,7 +159,7 @@ impl Allocator {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct PageTableEntry {
     entry: u32,
 }
@@ -179,14 +182,25 @@ impl PageTableEntry {
 #[repr(align(4096))]
 #[repr(C)]
 pub struct PageTable {
-    entries: [PageTableEntry; PAGE_ENTRY_SIZE],
+    entries: [PageTableEntry; N_PAGE_ENTRY],
 }
 
 impl PageTable {
     fn init(&mut self) {
-        for i in 0..PAGE_ENTRY_SIZE {
+        for i in 0..N_PAGE_ENTRY {
             self.entries[i] = PageTableEntry::zero();
         }
+    }
+    pub fn gen_recursive() -> PageTable {
+        let mut entries = [PageTableEntry::zero(); N_PAGE_ENTRY];
+        let table_ptr = &mut entries[0] as *mut PageTableEntry;
+        let table_ptr = table_ptr as u64;
+
+        let frame = Frame::from_addr(PhysAddr(table_ptr));
+
+        entries[RECURSIVE_ENTRY].set_frame(frame, Flag::WRITE | Flag::READ | Flag::VALID);
+
+        PageTable { entries }
     }
 }
 
@@ -203,7 +217,7 @@ impl ops::IndexMut<usize> for PageTable {
     }
 }
 
-struct Map<'a> {
+pub struct Map<'a> {
     dir: &'a mut PageTable,
 }
 
@@ -251,6 +265,16 @@ impl<'a> Map<'a> {
         }
         entry.set_frame(frame, flag);
 
+        Ok(())
+    }
+
+    pub fn map_region(
+        &mut self,
+        virt_addr: VirtAddr,
+        phys_addr: PhysAddr,
+        size: usize,
+        flag: Flag,
+    ) -> Result<(), PageError> {
         Ok(())
     }
 }
