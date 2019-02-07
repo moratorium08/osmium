@@ -5,15 +5,10 @@
 
 _start:
     /* Set up stack pointer. */
-    li     sp, 0xf42300
+    lui     sp, %hi(stack_end)
+    addi    sp, sp, %lo(stack_end)
     /* Now jump to the rust world; __start_rust.  */
     j       __start_rust
-
-
-.bss
-
-stacks:
-    .skip 1024
 
 .option norvc
 .section .kernel_aligned, "ax",@progbits
@@ -23,3 +18,6 @@ kernel_pgdir_ptr:
 .global kernel_frames_ptr
 kernel_frames_ptr:
     .skip 2097152
+stack:
+    .skip 2097152
+stack_end:

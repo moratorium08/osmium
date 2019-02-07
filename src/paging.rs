@@ -4,7 +4,7 @@ use core::ops;
 use csr;
 
 pub const LOG_PGSIZE: usize = 12;
-pub const PGSIZE: usize = 1 << LOG_PGSIZE + 1;
+pub const PGSIZE: usize = 1 << LOG_PGSIZE;
 const MEM_SIZE: usize = (1 << 31) + PGSIZE; // memory is 2GB, IO is last frame
 pub const N_FRAMES: usize = MEM_SIZE / PGSIZE;
 pub const PAGE_ENTRY_SIZE: usize = 4;
@@ -181,7 +181,8 @@ impl Frame {
 
     pub fn to_ppn(&self) -> u32 {
         /* 34 -> 32(22) bits */
-        (self.addr.floor_pgsize().0 >> 2) as u32
+        //(self.addr.floor_pgsize().0 >> 2) as u32
+        self.addr.floor_pgsize().0 as u32
     }
 
     fn phys_addr(&self) -> PhysAddr {
@@ -320,7 +321,7 @@ impl<'a> Map<'a> {
         let frame: Frame;
         let initialize = if !entry.is_valid() {
             frame = allocator.alloc()?;
-            entry.set_frame(frame, Flag::VALID | Flag::READ | Flag::WRITE);
+            entry.set_frame(frame, Flag::VALID);
             true
         } else {
             frame = Frame::from_addr(entry.phys_addr());
@@ -357,7 +358,12 @@ impl<'a> Map<'a> {
             allocator,
             boot,
         )?;
-        println!("{} -> {}", page.base_addr(), frame.phys_addr());
+        println!(
+            "{}: {} -> {}",
+            page.vpn0(),
+            page.base_addr(),
+            frame.phys_addr()
+        );
         let entry = &mut vpn1[page.vpn0() as usize];
 
         if entry.is_valid() {
@@ -406,6 +412,7 @@ impl<'a> Map<'a> {
         let tmp = size % PGSIZE;
         let pad = if tmp == 0 { 0 } else { PGSIZE - tmp };
         let n_pages = (size + pad) / PGSIZE;
+        println!("{} / {} = {}", size, PGSIZE, n_pages);
         for i in 0..n_pages {
             self.map_inner(
                 Page::from_addr(virt_addr.offset((i * PGSIZE) as u32)),

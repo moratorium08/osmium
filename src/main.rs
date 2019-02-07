@@ -56,7 +56,7 @@ pub extern "C" fn __start_rust() -> ! {
         paging::VirtAddr::new(0),
         paging::PhysAddr::new(0),
         get_kernel_end_addr() as usize,
-        paging::Flag::VALID | paging::Flag::READ | paging::Flag::WRITE,
+        paging::Flag::READ | paging::Flag::WRITE | paging::Flag::EXEC | paging::Flag::VALID,
         &mut allocator,
     ) {
         panic!("Failed to map kernel region. Reason: {:?}", e);
@@ -67,7 +67,7 @@ pub extern "C" fn __start_rust() -> ! {
         paging::VirtAddr::new(IO_REGION as u32),
         paging::PhysAddr::new(IO_REGION),
         paging::PGSIZE,
-        paging::Flag::READ | paging::Flag::WRITE | paging::Flag::VALID,
+        paging::Flag::READ | paging::Flag::WRITE | paging::Flag::EXEC | paging::Flag::VALID,
         &mut allocator,
     ) {
         panic!("Failed to map io region. Reason: {:?}", e);
