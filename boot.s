@@ -5,7 +5,7 @@
 
 _start:
     /* Set up stack pointer. */
-    li     sp, 0xf4230
+    li     sp, 0xf42300
     /* Now jump to the rust world; __start_rust.  */
     j       __start_rust
 

@@ -36,6 +36,6 @@ macro_rules! println {
     ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
 }
 
-fn read_byte() -> u8 {
+pub fn read_byte() -> u8 {
     unsafe { *UART_RX }
 }

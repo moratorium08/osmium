@@ -20,6 +20,12 @@ fn start_paging() {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PhysAddr(u64);
 
+impl fmt::Display for PhysAddr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "PhysAddr({})", self.0)
+    }
+}
+
 impl PhysAddr {
     pub fn new(addr: u64) -> PhysAddr {
         PhysAddr(addr)
@@ -51,6 +57,12 @@ impl PhysAddr {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VirtAddr(u32);
+
+impl fmt::Display for VirtAddr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VirtAddr({})", self.0)
+    }
+}
 
 impl VirtAddr {
     pub fn new(addr: u32) -> VirtAddr {
@@ -191,15 +203,14 @@ pub enum PageError {
 }
 
 impl<'a> Allocator<'a> {
-    pub unsafe fn new(frames: *mut u32) -> Allocator<'a> {
+    pub unsafe fn new(frames: *mut u32, is_used: &Fn(usize) -> bool) -> Allocator<'a> {
         let frames = &mut *(frames as *mut [Frame; N_FRAMES]);
         let mut stack = 0;
-        // TODO: create memory map
         for i in 0..N_FRAMES {
             if i % 10000 == 9999 {
                 println!("{} % completed", (100 * i) / N_FRAMES);
             }
-            if i < KERN_END / PGSIZE + 1 {
+            if is_used(i * PGSIZE) {
                 continue;
             }
             frames[stack] = Frame::from_addr(PhysAddr::from_page_index(i));
@@ -325,8 +336,8 @@ impl<'a> Map<'a> {
             table = unsafe { &mut (*ptr) };
         }
 
-        println!("init");
         if initialize {
+            println!("init");
             table.init();
         }
         Ok(table)
@@ -340,19 +351,18 @@ impl<'a> Map<'a> {
         boot: bool,
     ) -> Result<(), PageError> {
         let vpn1_page = vpn1_page(page);
-        println!("create next table frame");
         let vpn1 = Map::create_next_table(
             &mut self.dir[page.vpn1() as usize],
             vpn1_page,
             allocator,
             boot,
         )?;
+        println!("{} -> {}", page.base_addr(), frame.phys_addr());
         let entry = &mut vpn1[page.vpn0() as usize];
 
         if entry.is_valid() {
             return Err(PageError::ProgramError("tried to map already mapped page"));
         }
-        println!("before set frame");
         entry.set_frame(frame, flag);
 
         Ok(())
@@ -394,10 +404,9 @@ impl<'a> Map<'a> {
             return Err(PageError::ProgramError("page alignment is invalid"));
         }
         let tmp = size % PGSIZE;
-        let pad = PGSIZE - (if tmp == 0 { 0 } else { PGSIZE - tmp });
+        let pad = if tmp == 0 { 0 } else { PGSIZE - tmp };
         let n_pages = (size + pad) / PGSIZE;
         for i in 0..n_pages {
-            println!("{} / {}", i, n_pages);
             self.map_inner(
                 Page::from_addr(virt_addr.offset((i * PGSIZE) as u32)),
                 Frame::from_addr(phys_addr.offset((i * PGSIZE) as u64)),

@@ -39,7 +39,16 @@ pub extern "C" fn __start_rust() -> ! {
     let mut mapper = paging::Map::new(kern_pgdir);
     println!("mapper created");
 
-    let mut allocator = unsafe { paging::Allocator::new(kernel_frames) };
+    let is_used = |addr| {
+        if (addr as u64) < get_kernel_end_addr() + (paging::PGSIZE as u64) {
+            return true;
+        }
+        if addr as u64 >= IO_REGION {
+            return true;
+        }
+        false
+    };
+    let mut allocator = unsafe { paging::Allocator::new(kernel_frames, &is_used) };
     println!("allocator created");
 
     println!("kernel ends with {:x}", get_kernel_end_addr());
@@ -52,7 +61,7 @@ pub extern "C" fn __start_rust() -> ! {
     ) {
         panic!("Failed to map kernel region. Reason: {:?}", e);
     }
-    println!("mapping created");
+    println!("kernel mapping created");
 
     if let Err(e) = mapper.boot_map_region(
         paging::VirtAddr::new(IO_REGION as u32),
@@ -63,7 +72,7 @@ pub extern "C" fn __start_rust() -> ! {
     ) {
         panic!("Failed to map io region. Reason: {:?}", e);
     }
-    println!("mapping created");
+    println!("io mapping created");
 
     csr::SATP::set_ppn(kern_pgdir_addr >> paging::LOG_PGSIZE);
     csr::SATP::enable_paging();
