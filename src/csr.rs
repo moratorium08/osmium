@@ -14,7 +14,7 @@ fn read_and_write(val: u32) -> u32 {
     let result: u32;
 
     unsafe {
-        asm!("csrrs $0, satp, $1"
+        asm!("csrrw $0, satp, $1"
             : "=&r"(result)
             :   "r"(val));
     }
@@ -31,7 +31,7 @@ fn write(val: u32) {
 
 fn bit_set(bitvec: u32) {
     unsafe {
-        asm!("csrrw x0, satp, $0"
+        asm!("csrrs x0, satp, $0"
             :
             : "r"(bitvec));
     }

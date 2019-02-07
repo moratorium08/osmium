@@ -1,10 +1,11 @@
 use array_init::array_init;
+use core::fmt;
 use core::ops;
 use csr;
 
-const MEM_SIZE: usize = 2 * (1 << 9);
 pub const LOG_PGSIZE: usize = 12;
-pub const PGSIZE: usize = 1 << LOG_PGSIZE;
+pub const PGSIZE: usize = 1 << LOG_PGSIZE + 1;
+const MEM_SIZE: usize = (1 << 31) + PGSIZE; // memory is 2GB, IO is last frame
 pub const N_FRAMES: usize = MEM_SIZE / PGSIZE;
 pub const PAGE_ENTRY_SIZE: usize = 4;
 pub const N_PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
@@ -20,8 +21,8 @@ fn start_paging() {
 pub struct PhysAddr(u64);
 
 impl PhysAddr {
-    pub fn new(addr: u32) -> PhysAddr {
-        PhysAddr(0)
+    pub fn new(addr: u64) -> PhysAddr {
+        PhysAddr(addr)
     }
     pub fn from_page_index(i: usize) -> PhysAddr {
         let i = i as u64;
@@ -33,6 +34,18 @@ impl PhysAddr {
     }
     pub fn floor_pgsize(self) -> PhysAddr {
         PhysAddr(self.start_addr())
+    }
+    pub fn to_u64(&self) -> u64 {
+        self.0
+    }
+    pub fn offset(&self, offset: u64) -> PhysAddr {
+        PhysAddr(offset + self.0)
+    }
+    // only in boot process
+    fn as_mut_ptr<T>(self) -> *mut T {
+        let addr = self.0;
+        let addr: *mut T = addr as *mut T;
+        addr
     }
 }
 
@@ -51,6 +64,14 @@ impl VirtAddr {
         let addr = self.0;
         let addr: *mut T = addr as *mut T;
         addr
+    }
+
+    pub fn to_u32(&self) -> u32 {
+        self.0
+    }
+
+    pub fn offset(&self, offset: u32) -> VirtAddr {
+        VirtAddr(offset + self.0)
     }
 }
 
@@ -72,7 +93,10 @@ pub struct Page {
 
 impl Page {
     pub fn from_addr(addr: VirtAddr) -> Page {
-        Page { ref_count: 0, addr }
+        Page {
+            ref_count: 0,
+            addr: VirtAddr::new(addr.page_start_addr()),
+        }
     }
     pub fn base_addr(&self) -> VirtAddr {
         self.addr
@@ -91,6 +115,41 @@ impl Page {
     pub fn from_vpns(vpns: [u32; 2]) -> Page {
         let addr = VirtAddr::new((vpns[1] << 22) | (vpns[0] << 12));
         Page { ref_count: 0, addr }
+    }
+    pub fn range(addr: VirtAddr, size: u32) -> PageRange {
+        let end = addr.page_start_addr() + size;
+        let md = end % (PGSIZE as u32);
+        let pad = if md == 0 { 0 } else { (PGSIZE as u32) - md };
+        PageRange {
+            start: Page::from_addr(addr),
+            end: Page::from_addr(VirtAddr::new(addr.page_start_addr() + size + pad)),
+        }
+    }
+    pub fn next_page(&self) -> Page {
+        Page {
+            ref_count: 0,
+            addr: VirtAddr::new(self.addr.page_start_addr() + (PGSIZE as u32)),
+        }
+    }
+}
+
+// 半開区間[start, end)
+pub struct PageRange {
+    start: Page,
+    end: Page,
+}
+
+impl Iterator for PageRange {
+    type Item = Page;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.start.base_addr() < self.end.base_addr() {
+            let page = self.start.clone();
+            self.start = self.start.next_page();
+            Some(page)
+        } else {
+            None
+        }
     }
 }
 
@@ -112,32 +171,41 @@ impl Frame {
         /* 34 -> 32(22) bits */
         (self.addr.floor_pgsize().0 >> 2) as u32
     }
+
+    fn phys_addr(&self) -> PhysAddr {
+        self.addr
+    }
 }
 
 // Fixed size memory allocator by 'stack-like' simple data structure
-pub struct Allocator {
-    frames: [Frame; N_FRAMES],
+pub struct Allocator<'a> {
+    frames: &'a mut [Frame; N_FRAMES],
     stack: usize,
 }
 
+#[derive(Debug)]
 pub enum PageError {
     FailedToAllocMemory,
     ProgramError(&'static str),
     MapError,
 }
 
-impl Allocator {
-    pub fn new() -> Allocator {
-        let mut frames: [Frame; N_FRAMES] = array_init(|_| Frame::void_frame());
+impl<'a> Allocator<'a> {
+    pub unsafe fn new(frames: *mut u32) -> Allocator<'a> {
+        let frames = &mut *(frames as *mut [Frame; N_FRAMES]);
         let mut stack = 0;
         // TODO: create memory map
         for i in 0..N_FRAMES {
+            if i % 10000 == 9999 {
+                println!("{} % completed", (100 * i) / N_FRAMES);
+            }
             if i < KERN_END / PGSIZE + 1 {
                 continue;
             }
             frames[stack] = Frame::from_addr(PhysAddr::from_page_index(i));
             stack += 1;
         }
+        println!("N_FRAMES: {}, stack: {}", N_FRAMES, stack);
         Allocator { frames, stack }
     }
     pub fn alloc(&mut self) -> Result<Frame, PageError> {
@@ -178,6 +246,9 @@ impl PageTableEntry {
     fn set_frame(&mut self, frame: Frame, flag: Flag) {
         self.entry = frame.to_ppn() | flag.bits()
     }
+    fn phys_addr(&self) -> PhysAddr {
+        PhysAddr((self.entry & 0xfffff000) as u64)
+    }
 }
 
 #[repr(align(4096))]
@@ -188,6 +259,7 @@ pub struct PageTable {
 
 impl PageTable {
     fn init(&mut self) {
+        println!("page table placement {:p}", self);
         for i in 0..N_PAGE_ENTRY {
             self.entries[i] = PageTableEntry::zero();
         }
@@ -228,26 +300,72 @@ impl<'a> Map<'a> {
         Map { dir }
     }
 
-    pub fn create_next_table(
+    fn create_next_table(
         entry: &'a mut PageTableEntry,
         next_table_page: Page,
         allocator: &mut Allocator,
+        boot: bool,
     ) -> Result<&'a mut PageTable, PageError> {
+        let frame: Frame;
         let initialize = if !entry.is_valid() {
-            let frame = allocator.alloc()?;
+            frame = allocator.alloc()?;
             entry.set_frame(frame, Flag::VALID | Flag::READ | Flag::WRITE);
             true
         } else {
+            frame = Frame::from_addr(entry.phys_addr());
             false
         };
 
-        let ptr: *mut PageTable = next_table_page.base_addr().as_mut_ptr();
-        let table: &mut PageTable = unsafe { &mut (*ptr) };
+        let table: &mut PageTable;
+        if boot {
+            let ptr: *mut PageTable = frame.phys_addr().as_mut_ptr();
+            table = unsafe { &mut (*ptr) };
+        } else {
+            let ptr: *mut PageTable = next_table_page.base_addr().as_mut_ptr();
+            table = unsafe { &mut (*ptr) };
+        }
 
+        println!("init");
         if initialize {
             table.init();
         }
         Ok(table)
+    }
+    fn map_inner(
+        &mut self,
+        page: Page,
+        frame: Frame,
+        flag: Flag,
+        allocator: &mut Allocator,
+        boot: bool,
+    ) -> Result<(), PageError> {
+        let vpn1_page = vpn1_page(page);
+        println!("create next table frame");
+        let vpn1 = Map::create_next_table(
+            &mut self.dir[page.vpn1() as usize],
+            vpn1_page,
+            allocator,
+            boot,
+        )?;
+        let entry = &mut vpn1[page.vpn0() as usize];
+
+        if entry.is_valid() {
+            return Err(PageError::ProgramError("tried to map already mapped page"));
+        }
+        println!("before set frame");
+        entry.set_frame(frame, flag);
+
+        Ok(())
+    }
+
+    pub fn boot_map(
+        &mut self,
+        page: Page,
+        frame: Frame,
+        flag: Flag,
+        allocator: &mut Allocator,
+    ) -> Result<(), PageError> {
+        self.map_inner(page, frame, flag, allocator, true)
     }
 
     pub fn map(
@@ -257,16 +375,37 @@ impl<'a> Map<'a> {
         flag: Flag,
         allocator: &mut Allocator,
     ) -> Result<(), PageError> {
-        let vpn1_page = vpn1_page(page);
-        let vpn1 =
-            Map::create_next_table(&mut self.dir[page.vpn1() as usize], vpn1_page, allocator)?;
-        let entry = &mut vpn1[page.vpn0() as usize];
+        self.map_inner(page, frame, flag, allocator, false)
+    }
 
-        if entry.is_valid() {
-            return Err(PageError::ProgramError("tried to map already mapped page"));
+    fn map_region_inner(
+        &mut self,
+        virt_addr: VirtAddr,
+        phys_addr: PhysAddr,
+        size: usize,
+        flag: Flag,
+        allocator: &mut Allocator,
+        boot: bool,
+    ) -> Result<(), PageError> {
+        if virt_addr.to_u32() % (PGSIZE as u32) != 0 {
+            return Err(PageError::ProgramError("page alignment is invalid"));
         }
-        entry.set_frame(frame, flag);
-
+        if phys_addr.to_u64() % (PGSIZE as u64) != 0 {
+            return Err(PageError::ProgramError("page alignment is invalid"));
+        }
+        let tmp = size % PGSIZE;
+        let pad = PGSIZE - (if tmp == 0 { 0 } else { PGSIZE - tmp });
+        let n_pages = (size + pad) / PGSIZE;
+        for i in 0..n_pages {
+            println!("{} / {}", i, n_pages);
+            self.map_inner(
+                Page::from_addr(virt_addr.offset((i * PGSIZE) as u32)),
+                Frame::from_addr(phys_addr.offset((i * PGSIZE) as u64)),
+                flag,
+                allocator,
+                boot,
+            )?;
+        }
         Ok(())
     }
 
@@ -276,8 +415,21 @@ impl<'a> Map<'a> {
         phys_addr: PhysAddr,
         size: usize,
         flag: Flag,
+        allocator: &mut Allocator,
     ) -> Result<(), PageError> {
-        Ok(())
+        self.map_region_inner(virt_addr, phys_addr, size, flag, allocator, false)
+    }
+
+    // after boot, create identity map of kernel properties
+    pub fn boot_map_region(
+        &mut self,
+        virt_addr: VirtAddr,
+        phys_addr: PhysAddr,
+        size: usize,
+        flag: Flag,
+        allocator: &mut Allocator,
+    ) -> Result<(), PageError> {
+        self.map_region_inner(virt_addr, phys_addr, size, flag, allocator, true)
     }
 }
 

@@ -1,7 +1,7 @@
 use core::fmt::Write;
 
-const UART_RX: *const u8 = 0x10000 as * const u8;
-const UART_TX: *mut u8   = 0x10004 as * mut u8;
+const UART_RX: *const u8 = 0x80000000 as *const u8;
+const UART_TX: *mut u8 = 0x80000004 as *mut u8;
 
 struct UART;
 
@@ -37,7 +37,5 @@ macro_rules! println {
 }
 
 fn read_byte() -> u8 {
-    unsafe {
-        *UART_RX
-    }
+    unsafe { *UART_RX }
 }

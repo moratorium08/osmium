@@ -20,3 +20,6 @@ stacks:
 .global kernel_pgdir_ptr
 kernel_pgdir_ptr:
     .skip 4096
+.global kernel_frames_ptr
+kernel_frames_ptr:
+    .skip 2097152
