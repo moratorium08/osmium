@@ -3,9 +3,8 @@ use utils;
 fn read(addr: u16) -> u32 {
     let result: u32;
     unsafe {
-        asm!("csrrs $0, $1, x0"
-            : "=&r"(result)
-            : "r"(addr));
+        asm!("csrrs $0, satp, x0"
+            : "=&r"(result));
     }
     result
 }
@@ -22,7 +21,7 @@ fn read_and_write(val: u32) -> u32 {
     result
 }
 
-fn write(addr: u16, val: u32) {
+fn write(val: u32) {
     unsafe {
         asm!("csrrw x0, satp, $0"
             :
@@ -30,7 +29,7 @@ fn write(addr: u16, val: u32) {
     }
 }
 
-fn bit_set(addr: u16, bitvec: u32) {
+fn bit_set(bitvec: u32) {
     unsafe {
         asm!("csrrw x0, satp, $0"
             :
@@ -38,7 +37,7 @@ fn bit_set(addr: u16, bitvec: u32) {
     }
 }
 
-fn bit_clear(addr: u16, bitvec: u32) {
+fn bit_clear(bitvec: u32) {
     unsafe {
         asm!("csrrc x0, satp, $0"
             :
@@ -66,7 +65,7 @@ impl SATP {
     }
     pub fn commit(&self) {
         let v = self.to_u32();
-        write(SATP_ADDR, v);
+        write(v);
     }
     pub fn write(paging_on: bool, ppn: u32) {
         SATP { paging_on, ppn }.commit();
@@ -77,7 +76,7 @@ impl SATP {
             ppn: 0,
         }
         .to_u32();
-        bit_set(SATP_ADDR, v);
+        bit_set(v);
     }
     pub fn disable_paging() {
         let v = SATP {
@@ -85,7 +84,7 @@ impl SATP {
             ppn: 0,
         }
         .to_u32();
-        bit_clear(SATP_ADDR, v);
+        bit_clear(v);
     }
     pub fn set_ppn(ppn: u32) {
         let mut satp = SATP::read();

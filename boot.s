@@ -14,3 +14,9 @@ _start:
 
 stacks:
     .skip 1024
+
+.option norvc
+.section .kernel_aligned, "ax",@progbits
+.global kernel_pgdir_ptr
+kernel_pgdir_ptr:
+    .skip 4096

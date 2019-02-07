@@ -17,6 +17,7 @@ use core::panic::PanicInfo;
 
 extern "C" {
     static kernel_end: u8;
+    static mut kernel_pgdir_ptr: u32;
 }
 
 fn get_kernel_end_addr() -> u64 {
@@ -25,9 +26,11 @@ fn get_kernel_end_addr() -> u64 {
 
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
-    let kern_pgdir = &mut paging::PageTable::gen_recursive();
+    let kern_pgdir = unsafe { paging::PageTable::gen_recursive(&mut kernel_pgdir_ptr as *mut u32) };
+    let kern_pgdir_addr = (kern_pgdir as *const paging::PageTable) as u32;
     let mut mapper = paging::Map::new(kern_pgdir);
     println!("kernel ends with {:x}", get_kernel_end_addr());
+    println!("kern pgdir addr {:x}", kern_pgdir_addr);
     if let Err(e) = mapper.map_region(
         paging::VirtAddr::new(0),
         paging::PhysAddr::new(0),
@@ -36,6 +39,8 @@ pub extern "C" fn __start_rust() -> ! {
     ) {
         panic!("Failed to map kernel region");
     }
+
+    csr::SATP::set_ppn(kern_pgdir_addr >> paging::LOG_PGSIZE);
 
     csr::SATP::enable_paging();
 

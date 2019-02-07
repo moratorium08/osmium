@@ -30,5 +30,13 @@ SECTIONS
     {
         *(.bss bss.*)
     }
+
+
+    . = ALIGN( 0x1000 );
+    .kernel_aligned :
+    {
+        *(.kernel_aligned kernel_aligned.*)
+    }
+    
     PROVIDE(kernel_end = .);
 }

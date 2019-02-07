@@ -3,10 +3,11 @@ use core::ops;
 use csr;
 
 const MEM_SIZE: usize = 2 * (1 << 9);
-const PGSIZE: usize = 4096;
-const N_FRAMES: usize = MEM_SIZE / PGSIZE;
-const PAGE_ENTRY_SIZE: usize = 4;
-const N_PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
+pub const LOG_PGSIZE: usize = 12;
+pub const PGSIZE: usize = 1 << LOG_PGSIZE;
+pub const N_FRAMES: usize = MEM_SIZE / PGSIZE;
+pub const PAGE_ENTRY_SIZE: usize = 4;
+pub const N_PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
 const RECURSIVE_ENTRY: usize = N_PAGE_ENTRY - 2;
 
 const KERN_END: usize = 0x80000; // TODO: use linker to specify where it should be
@@ -191,16 +192,17 @@ impl PageTable {
             self.entries[i] = PageTableEntry::zero();
         }
     }
-    pub fn gen_recursive() -> PageTable {
-        let mut entries = [PageTableEntry::zero(); N_PAGE_ENTRY];
-        let table_ptr = &mut entries[0] as *mut PageTableEntry;
+    pub unsafe fn gen_recursive<'a>(base: *mut u32) -> &'a mut PageTable {
+        let mut table = &mut *(base as *mut PageTable);
+
+        let table_ptr = &mut table.entries[0] as *mut PageTableEntry;
         let table_ptr = table_ptr as u64;
 
         let frame = Frame::from_addr(PhysAddr(table_ptr));
 
-        entries[RECURSIVE_ENTRY].set_frame(frame, Flag::WRITE | Flag::READ | Flag::VALID);
+        table.entries[RECURSIVE_ENTRY].set_frame(frame, Flag::WRITE | Flag::READ | Flag::VALID);
 
-        PageTable { entries }
+        table
     }
 }
 
