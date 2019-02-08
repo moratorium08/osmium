@@ -11,6 +11,7 @@ extern crate array_init;
 pub mod uart;
 pub mod csr;
 pub mod paging;
+pub mod proc;
 pub mod trap;
 pub mod utils;
 
