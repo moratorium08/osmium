@@ -1,7 +1,7 @@
 use array_init::array_init;
 use core::fmt;
 use core::ops;
-use csr;
+use csr::satp;
 
 pub const LOG_PGSIZE: usize = 12;
 pub const PGSIZE: usize = 1 << LOG_PGSIZE;
@@ -14,7 +14,7 @@ const RECURSIVE_ENTRY: usize = N_PAGE_ENTRY - 2;
 const KERN_END: usize = 0x80000; // TODO: use linker to specify where it should be
 
 fn start_paging() {
-    csr::SATP::enable_paging();
+    satp::SATP::enable_paging();
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -11,9 +11,11 @@ extern crate array_init;
 pub mod uart;
 pub mod csr;
 pub mod paging;
+pub mod trap;
 pub mod utils;
 
 use core::panic::PanicInfo;
+use csr::satp;
 
 extern "C" {
     static kernel_end: u8;
@@ -74,8 +76,8 @@ pub extern "C" fn __start_rust() -> ! {
     }
     println!("io mapping created");
 
-    csr::SATP::set_ppn(kern_pgdir_addr >> paging::LOG_PGSIZE);
-    csr::SATP::enable_paging();
+    satp::SATP::set_ppn(kern_pgdir_addr >> paging::LOG_PGSIZE);
+    satp::SATP::enable_paging();
 
     println!("ok");
     loop {}
