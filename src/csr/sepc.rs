@@ -1,5 +1,3 @@
-use utils;
-
 use csr::{CSRRead, CSRWrite};
 use paging;
 

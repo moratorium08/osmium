@@ -1,7 +1,6 @@
-use utils;
-
 use csr::{CSRRead, CSRWrite};
 
+#[derive(Copy, Clone)]
 pub enum Mode {
     Direct,
     Vectored,

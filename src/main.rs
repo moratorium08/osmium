@@ -1,4 +1,5 @@
 #![feature(global_asm)]
+#![feature(core_intrinsics)]
 #![no_std]
 #![no_main]
 #![feature(asm)]
@@ -30,6 +31,18 @@ fn get_kernel_end_addr() -> u64 {
     unsafe { (&kernel_end as *const u8) as u64 }
 }
 
+struct BootAlloc<'a> {
+    pub procs: &'a mut [proc::Process<'a>; proc::N_PROCS],
+}
+
+// must call before memory management in order to reserve envs memory.
+fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
+    let end = get_kernel_end_addr();
+
+    let procs = unsafe { &mut *(end as *mut [proc::Process; proc::N_PROCS]) };
+    (end + (proc::Process::size_of() as u64), BootAlloc { procs })
+}
+
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
     println!("hello\n\n");
@@ -42,8 +55,9 @@ pub extern "C" fn __start_rust() -> ! {
     let mut mapper = paging::Map::new(kern_pgdir);
     println!("mapper created");
 
+    let (kernel_memory_end, allocated) = boot_alloc();
     let is_used = |addr| {
-        if (addr as u64) < get_kernel_end_addr() + (paging::PGSIZE as u64) {
+        if (addr as u64) < kernel_memory_end + (paging::PGSIZE as u64) {
             return true;
         }
         if addr as u64 >= IO_REGION {
@@ -54,7 +68,7 @@ pub extern "C" fn __start_rust() -> ! {
     let mut allocator = unsafe { paging::Allocator::new(kernel_frames, &is_used) };
     println!("allocator created");
 
-    println!("kernel ends with {:x}", get_kernel_end_addr());
+    println!("envs start with {:x}", get_kernel_end_addr());
     if let Err(e) = mapper.boot_map_region(
         paging::VirtAddr::new(0),
         paging::PhysAddr::new(0),

@@ -9,11 +9,19 @@ pub enum Trap {
 }
 
 impl Trap {
-    fn from_u32(x: u32) -> Trap {
+    fn from_u32(x: u32) -> Option<Trap> {
         if (x >> 31) == 1 {
-            Trap::Interruption(trap::Interruption::from_u32(x & !(1 << 31)))
+            let int = trap::Interruption::from_u32(x & !(1 << 31));
+            match int {
+                Some(int) => Some(Trap::Interruption(int)),
+                None => None,
+            }
         } else {
-            Trap::Exception(trap::Exception::from_u32(x & !(1 << 31)))
+            let exc = trap::Exception::from_u32(x & !(1 << 31));
+            match exc {
+                Some(int) => Some(Trap::Exception(int)),
+                None => None,
+            }
         }
     }
 }
@@ -33,7 +41,7 @@ impl CSRRead for SCAUSE {
     }
     fn from_u32(x: u32) -> SCAUSE {
         SCAUSE {
-            trap: Trap::from_u32(x),
+            trap: Trap::from_u32(x).expect("failed to parse scause"),
         }
     }
 }
