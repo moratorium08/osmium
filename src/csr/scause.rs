@@ -1,5 +1,3 @@
-use utils;
-
 use crate::trap;
 use csr::CSRRead;
 

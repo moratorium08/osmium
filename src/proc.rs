@@ -1,3 +1,4 @@
+use core::fmt;
 use paging;
 
 pub const N_PROCS: usize = 1024;
@@ -14,16 +15,33 @@ enum Status {
     Zonmie,
 }
 
+#[derive(Debug, Copy, Clone)]
 pub enum ProcessError {
     FailedToCreateProcess,
     ProgramError(&'static str),
 }
+
+impl ProcessError {
+    fn to_str(&self) -> &'static str {
+        match self {
+            ProcessError::FailedToCreateProcess => "failed to create process",
+            ProcessError::ProgramError(s) => s,
+        }
+    }
+}
+
+impl fmt::Display for ProcessError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ProcessError({})", self.to_str())
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct Id(pub u32);
 
 #[repr(C)]
 pub struct Process<'a> {
-    pub table: Option<&'a mut paging::PageTable>,
+    pub mapper: Option<paging::Map<'a>>,
     pub id: Id,
     pub parent_id: Id,
     index: usize,
@@ -33,7 +51,7 @@ pub struct Process<'a> {
 
 impl<'a> Process<'a> {
     pub fn init(&mut self, id: Id) {
-        self.table = None;
+        self.mapper = None;
         self.id = id;
         self.parent_id = id;
         self.proc_type = Type::User;
@@ -47,7 +65,7 @@ impl<'a> Process<'a> {
     pub fn size_of() -> usize {
         use core::intrinsics::size_of_val;
         let p = &Process {
-            table: None,
+            mapper: None,
             id: Id(0),
             parent_id: Id(0),
             index: 0,
@@ -56,6 +74,37 @@ impl<'a> Process<'a> {
         };
         unsafe { size_of_val(p) }
     }
+
+    pub fn create(
+        &mut self,
+        allocator: &mut paging::Allocator,
+        mapper: &mut paging::Map,
+    ) -> Result<(), ProcessError> {
+        let frame = if let Ok(frame) = allocator.alloc() {
+            frame
+        } else {
+            return Err(ProcessError::FailedToCreateProcess);
+        };
+        let table: &mut paging::PageTable =
+            unsafe { &mut (*frame.phys_addr().as_mut_kernel_ptr()) };
+        // register kernel address space
+        mapper.identity_map(
+            frame,
+            paging::Flag::READ | paging::Flag::WRITE | paging::Flag::VALID,
+            allocator,
+        );
+        mapper.clone_dir(table);
+        table.set_recursive_entry(frame);
+        self.mapper = Some(paging::Map::new(table));
+        Ok(())
+    }
+
+    /*fn copy_kernel_table(&mut self, kernel_table: &paging::PageTable) {
+            let table = match self.mapper {
+                Some(ref mut m) => m,
+                None => panic!("copy kernel table failed"),
+            };
+    }*/
 }
 
 pub struct ProcessManager<'a> {
@@ -78,13 +127,13 @@ impl<'a> ProcessManager<'a> {
             stack: N_PROCS,
         }
     }
-    pub fn alloc(&mut self) -> Result<&'a mut Process, ProcessError> {
+    pub fn alloc(&mut self) -> Result<*mut Process<'a>, ProcessError> {
         if self.stack == 0 {
             Err(ProcessError::FailedToCreateProcess)
         } else {
             self.stack -= 1;
             let id = self.id_stack[self.stack];
-            Ok(&mut self.procs[id])
+            Ok((&mut self.procs[id]) as *mut Process<'a>)
         }
     }
 

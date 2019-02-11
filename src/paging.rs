@@ -1,4 +1,3 @@
-use array_init::array_init;
 use core::fmt;
 use core::ops;
 use csr::satp;
@@ -48,7 +47,7 @@ impl PhysAddr {
         PhysAddr(offset + self.0)
     }
     // only in boot process
-    fn as_mut_ptr<T>(self) -> *mut T {
+    pub fn as_mut_kernel_ptr<T>(self) -> *mut T {
         let addr = self.0;
         let addr: *mut T = addr as *mut T;
         addr
@@ -185,7 +184,7 @@ impl Frame {
         self.addr.floor_pgsize().0 as u32
     }
 
-    fn phys_addr(&self) -> PhysAddr {
+    pub fn phys_addr(&self) -> PhysAddr {
         self.addr
     }
 }
@@ -201,6 +200,8 @@ pub enum PageError {
     FailedToAllocMemory,
     ProgramError(&'static str),
     MapError,
+    AlreadyMapped,
+    IllegalAddress,
 }
 
 impl<'a> Allocator<'a> {
@@ -271,7 +272,6 @@ pub struct PageTable {
 
 impl PageTable {
     fn init(&mut self) {
-        println!("page table placement {:p}", self);
         for i in 0..N_PAGE_ENTRY {
             self.entries[i] = PageTableEntry::zero();
         }
@@ -284,9 +284,11 @@ impl PageTable {
 
         let frame = Frame::from_addr(PhysAddr(table_ptr));
 
-        table.entries[RECURSIVE_ENTRY].set_frame(frame, Flag::WRITE | Flag::READ | Flag::VALID);
-
+        table.set_recursive_entry(frame);
         table
+    }
+    pub fn set_recursive_entry(&mut self, frame: Frame) {
+        self.entries[RECURSIVE_ENTRY].set_frame(frame, Flag::WRITE | Flag::READ | Flag::VALID);
     }
 }
 
@@ -311,6 +313,11 @@ impl<'a> Map<'a> {
     pub fn new(dir: &'a mut PageTable) -> Map {
         Map { dir }
     }
+    pub fn clone_dir(&self, table: &mut PageTable) {
+        for i in 0..N_PAGE_ENTRY {
+            table[i] = self.dir[i];
+        }
+    }
 
     fn create_next_table(
         entry: &'a mut PageTableEntry,
@@ -330,7 +337,7 @@ impl<'a> Map<'a> {
 
         let table: &mut PageTable;
         if boot {
-            let ptr: *mut PageTable = frame.phys_addr().as_mut_ptr();
+            let ptr: *mut PageTable = frame.phys_addr().as_mut_kernel_ptr();
             table = unsafe { &mut (*ptr) };
         } else {
             let ptr: *mut PageTable = next_table_page.base_addr().as_mut_ptr();
@@ -338,7 +345,6 @@ impl<'a> Map<'a> {
         }
 
         if initialize {
-            println!("init");
             table.init();
         }
         Ok(table)
@@ -358,12 +364,6 @@ impl<'a> Map<'a> {
             allocator,
             boot,
         )?;
-        println!(
-            "{}: {} -> {}",
-            page.vpn0(),
-            page.base_addr(),
-            frame.phys_addr()
-        );
         let entry = &mut vpn1[page.vpn0() as usize];
 
         if entry.is_valid() {
@@ -412,7 +412,6 @@ impl<'a> Map<'a> {
         let tmp = size % PGSIZE;
         let pad = if tmp == 0 { 0 } else { PGSIZE - tmp };
         let n_pages = (size + pad) / PGSIZE;
-        println!("{} / {} = {}", size, PGSIZE, n_pages);
         for i in 0..n_pages {
             self.map_inner(
                 Page::from_addr(virt_addr.offset((i * PGSIZE) as u32)),
@@ -423,6 +422,21 @@ impl<'a> Map<'a> {
             )?;
         }
         Ok(())
+    }
+
+    pub fn identity_map(
+        &mut self,
+        frame: Frame,
+        flag: Flag,
+        allocator: &mut Allocator,
+    ) -> Result<(), PageError> {
+        let phys_addr = frame.phys_addr().to_u64();
+        if phys_addr >= (1 << 32) {
+            return Err(PageError::IllegalAddress);
+        }
+        let virt_addr = VirtAddr::new(phys_addr as u32);
+        let page = Page::from_addr(virt_addr);
+        self.map(page, frame, flag, allocator)
     }
 
     pub fn map_region(

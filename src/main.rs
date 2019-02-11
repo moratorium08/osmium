@@ -43,6 +43,12 @@ fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
     (end + (proc::Process::size_of() as u64), BootAlloc { procs })
 }
 
+struct Kernel<'a> {
+    kernel_pgdir: &'a mut paging::PageTable,
+    mapper: paging::Map<'a>,
+    allocator: paging::Allocator<'a>,
+}
+
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
     println!("hello\n\n");
@@ -94,6 +100,14 @@ pub extern "C" fn __start_rust() -> ! {
     satp::SATP::set_ppn(kern_pgdir_addr >> paging::LOG_PGSIZE);
     satp::SATP::enable_paging();
 
+    println!("kernel space (identity) paging works!");
+
+    println!("Let's create an user process");
+    let mut process_manager = proc::ProcessManager::new(allocated.procs);
+    let process = process_manager
+        .alloc()
+        .expect("failed to alloc process(program error)");
+    //process.create(&mut allocator, &mut mapper);
     println!("ok");
     loop {}
 }
