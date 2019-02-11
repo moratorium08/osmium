@@ -40,7 +40,10 @@ fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
     let end = get_kernel_end_addr();
 
     let procs = unsafe { &mut *(end as *mut [proc::Process; proc::N_PROCS]) };
-    (end + (proc::Process::size_of() as u64), BootAlloc { procs })
+    (
+        end + (proc::N_PROCS as u64) * (proc::Process::size_of() as u64),
+        BootAlloc { procs },
+    )
 }
 
 struct Kernel<'a> {
@@ -78,7 +81,7 @@ pub extern "C" fn __start_rust() -> ! {
     if let Err(e) = mapper.boot_map_region(
         paging::VirtAddr::new(0),
         paging::PhysAddr::new(0),
-        get_kernel_end_addr() as usize,
+        kernel_memory_end as usize,
         paging::Flag::READ | paging::Flag::WRITE | paging::Flag::EXEC | paging::Flag::VALID,
         &mut allocator,
     ) {
