@@ -1,0 +1,8 @@
+[package]
+name = "misc"
+version = "0.1.0"
+authors = ["katsurahiroyuki"]
+
+[build-dependencies]
+
+[dependencies]

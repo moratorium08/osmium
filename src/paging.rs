@@ -124,6 +124,7 @@ impl Page {
         [vpn0, vpn1]
     }
     pub fn from_vpns(vpns: [u32; 2]) -> Page {
+        println!("from_vpns{:x}", vpns[1] << 22 | vpns[0] << 12);
         let addr = VirtAddr::new((vpns[1] << 22) | (vpns[0] << 12));
         Page { ref_count: 0, addr }
     }
@@ -209,13 +210,13 @@ impl<'a> Allocator<'a> {
         let frames = &mut *(frames as *mut [Frame; N_FRAMES]);
         let mut stack = 0;
         for i in 0..N_FRAMES {
-            if i % 10000 == 9999 {
-                println!("{} % completed", (100 * i) / N_FRAMES);
-            }
             if is_used(i * PGSIZE) {
                 continue;
             }
             frames[stack] = Frame::from_addr(PhysAddr::from_page_index(i));
+            if i % 10000 == 9999 {
+                println!("{} % completed", (100 * i) / N_FRAMES);
+            }
             stack += 1;
         }
         println!("N_FRAMES: {}, stack: {}", N_FRAMES, stack);
@@ -226,6 +227,7 @@ impl<'a> Allocator<'a> {
             Err(PageError::FailedToAllocMemory)
         } else {
             self.stack -= 1;
+            println!("{}", self.frames[self.stack].phys_addr().to_u64());
             Ok(self.frames[self.stack].clone())
         }
     }
@@ -288,7 +290,7 @@ impl PageTable {
         table
     }
     pub fn set_recursive_entry(&mut self, frame: Frame) {
-        self.entries[RECURSIVE_ENTRY].set_frame(frame, Flag::WRITE | Flag::READ | Flag::VALID);
+        self.entries[RECURSIVE_ENTRY].set_frame(frame, Flag::VALID);
     }
 }
 
@@ -315,6 +317,7 @@ impl<'a> Map<'a> {
     }
     pub fn clone_dir(&self, table: &mut PageTable) {
         for i in 0..N_PAGE_ENTRY {
+            println!("{}", i);
             table[i] = self.dir[i];
         }
     }
@@ -325,6 +328,7 @@ impl<'a> Map<'a> {
         allocator: &mut Allocator,
         boot: bool,
     ) -> Result<&'a mut PageTable, PageError> {
+        println!("entry: {:x}", (entry as *mut PageTableEntry) as u64);
         let frame: Frame;
         let initialize = if !entry.is_valid() {
             frame = allocator.alloc()?;
@@ -341,10 +345,12 @@ impl<'a> Map<'a> {
             table = unsafe { &mut (*ptr) };
         } else {
             let ptr: *mut PageTable = next_table_page.base_addr().as_mut_ptr();
+            println!("ptr: {}", ptr as u64);
             table = unsafe { &mut (*ptr) };
         }
 
         if initialize {
+            println!("init");
             table.init();
         }
         Ok(table)
@@ -358,12 +364,14 @@ impl<'a> Map<'a> {
         boot: bool,
     ) -> Result<(), PageError> {
         let vpn1_page = vpn1_page(page);
+        println!("create_next_table");
         let vpn1 = Map::create_next_table(
             &mut self.dir[page.vpn1() as usize],
             vpn1_page,
             allocator,
             boot,
         )?;
+        println!("create_next_table");
         let entry = &mut vpn1[page.vpn0() as usize];
 
         if entry.is_valid() {
@@ -436,6 +444,7 @@ impl<'a> Map<'a> {
         }
         let virt_addr = VirtAddr::new(phys_addr as u32);
         let page = Page::from_addr(virt_addr);
+        println!("lets start");
         self.map(page, frame, flag, allocator)
     }
 
@@ -464,5 +473,6 @@ impl<'a> Map<'a> {
 }
 
 fn vpn1_page(page: Page) -> Page {
+    println!("RECV: {}", RECURSIVE_ENTRY);
     Page::from_vpns([page.vpn1(), RECURSIVE_ENTRY as u32])
 }

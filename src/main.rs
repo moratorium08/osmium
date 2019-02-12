@@ -107,9 +107,11 @@ pub extern "C" fn __start_rust() -> ! {
 
     println!("Let's create an user process");
     let mut process_manager = proc::ProcessManager::new(allocated.procs);
-    let process = process_manager
-        .alloc()
-        .expect("failed to alloc process(program error)");
+    let process = unsafe {
+        &mut *(process_manager
+            .alloc()
+            .expect("failed to alloc process(program error)"))
+    };
     //process.create(&mut allocator, &mut mapper);
     println!("ok");
     loop {}

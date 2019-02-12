@@ -85,6 +85,8 @@ impl<'a> Process<'a> {
         } else {
             return Err(ProcessError::FailedToCreateProcess);
         };
+        println!("are");
+        let a = frame.phys_addr().to_u64();
         let table: &mut paging::PageTable =
             unsafe { &mut (*frame.phys_addr().as_mut_kernel_ptr()) };
         // register kernel address space
@@ -93,7 +95,9 @@ impl<'a> Process<'a> {
             paging::Flag::READ | paging::Flag::WRITE | paging::Flag::VALID,
             allocator,
         );
+        println!("neko");
         mapper.clone_dir(table);
+        println!("hoge");
         table.set_recursive_entry(frame);
         self.mapper = Some(paging::Map::new(table));
         Ok(())
@@ -127,7 +131,7 @@ impl<'a> ProcessManager<'a> {
             stack: N_PROCS,
         }
     }
-    pub fn alloc(&mut self) -> Result<*mut Process<'a>, ProcessError> {
+    pub unsafe fn alloc(&mut self) -> Result<*mut Process<'a>, ProcessError> {
         if self.stack == 0 {
             Err(ProcessError::FailedToCreateProcess)
         } else {

@@ -19,5 +19,5 @@ kernel_pgdir_ptr:
 kernel_frames_ptr:
     .skip 2097152
 stack:
-    .skip 2097152
+    .skip 4097152
 stack_end:
