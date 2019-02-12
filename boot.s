@@ -22,9 +22,10 @@ kernel_pgdir_ptr:
 kernel_frames_ptr:
     .skip 2097152
 .global nop_start
-_nop_start:
+nop_start:
     .incbin "misc/bin/nop"
-_nop_end:
+.global nop_end
+nop_end:
 stack:
     .skip 4097152
 stack_end:

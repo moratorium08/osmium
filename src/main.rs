@@ -11,6 +11,8 @@ extern crate array_init;
 #[macro_use]
 pub mod uart;
 pub mod csr;
+pub mod elf;
+pub mod files;
 pub mod paging;
 pub mod proc;
 pub mod trap;
@@ -113,6 +115,8 @@ pub extern "C" fn __start_rust() -> ! {
             .expect("failed to alloc process(program error)"))
     };
     //process.create(&mut allocator, &mut mapper);
+    let nop_file = files::search("nop");
+
     println!("ok");
     loop {}
 }
