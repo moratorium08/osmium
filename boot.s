@@ -10,6 +10,9 @@ _start:
     /* Now jump to the rust world; __start_rust.  */
     j       __start_rust
 
+.section .elfdata
+.incbin "misc/bin/nop"
+
 .option norvc
 .section .kernel_aligned, "ax",@progbits
 .global kernel_pgdir_ptr
@@ -18,6 +21,11 @@ kernel_pgdir_ptr:
 .global kernel_frames_ptr
 kernel_frames_ptr:
     .skip 2097152
+.global nop_start
+_nop_start:
+    .incbin "misc/bin/nop"
+_nop_end:
 stack:
     .skip 4097152
 stack_end:
+
