@@ -41,7 +41,7 @@ pub struct Id(pub u32);
 
 #[repr(C)]
 pub struct Process<'a> {
-    pub mapper: Option<paging::Map<'a>>,
+    pub mapper: paging::Map<'a>,
     pub id: Id,
     pub parent_id: Id,
     index: usize,
@@ -50,8 +50,8 @@ pub struct Process<'a> {
 }
 
 impl<'a> Process<'a> {
-    pub fn init(&mut self, id: Id) {
-        self.mapper = None;
+    pub fn init(&mut self, id: Id, mapper: paging::Map<'a>) {
+        self.mapper = mapper;
         self.id = id;
         self.parent_id = id;
         self.proc_type = Type::User;
@@ -64,14 +64,8 @@ impl<'a> Process<'a> {
 
     pub fn size_of() -> usize {
         use core::intrinsics::size_of_val;
-        let p = &Process {
-            mapper: None,
-            id: Id(0),
-            parent_id: Id(0),
-            index: 0,
-            proc_type: Type::User,
-            status: Status::Free,
-        };
+        let dummy = 100usize;
+        let p: &Process = unsafe { &*(dummy as *const Process) };
         unsafe { size_of_val(p) }
     }
 
@@ -80,26 +74,7 @@ impl<'a> Process<'a> {
         allocator: &mut paging::Allocator,
         mapper: &mut paging::Map,
     ) -> Result<(), ProcessError> {
-        let frame = if let Ok(frame) = allocator.alloc() {
-            frame
-        } else {
-            return Err(ProcessError::FailedToCreateProcess);
-        };
-        println!("are");
-        let a = frame.phys_addr().to_u64();
-        let table: &mut paging::PageTable =
-            unsafe { &mut (*frame.phys_addr().as_mut_kernel_ptr()) };
-        // register kernel address space
-        // error handle
-        mapper.identity_map(
-            frame,
-            paging::Flag::READ | paging::Flag::WRITE | paging::Flag::VALID,
-            allocator,
-        );
-        println!("neko");
-        mapper.clone_dir(table);
-        println!("hoge");
-        self.mapper = Some(paging::Map::new(table));
+        mapper.clone_dir(&mut self.mapper);
         Ok(())
     }
 
@@ -118,11 +93,20 @@ pub struct ProcessManager<'a> {
 }
 
 impl<'a> ProcessManager<'a> {
-    pub fn new(procs: &'a mut [Process<'a>; N_PROCS]) -> ProcessManager<'a> {
+    pub fn new(
+        procs: &'a mut [Process<'a>; N_PROCS],
+        proc_pages: &'a mut [paging::PageTable; N_PROCS],
+        proc_tmp_pages: &'a mut [paging::PageTable; N_PROCS],
+    ) -> ProcessManager<'a> {
         let mut id_stack = [0usize; N_PROCS];
-        for i in 0..N_PROCS {
+        for (i, (p, t)) in proc_pages
+            .iter_mut()
+            .zip(proc_tmp_pages.iter_mut())
+            .enumerate()
+        {
             id_stack[i] = i;
-            procs[i].init(Id(i as u32));
+            paging::PageTable::setup_tmp_table(p, t);
+            procs[i].init(Id(i as u32), paging::Map::new(p, t));
             unsafe { procs[i].set_index(i) };
         }
         ProcessManager {

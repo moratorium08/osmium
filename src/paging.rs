@@ -8,6 +8,7 @@ const MEM_SIZE: usize = (1 << 31) + PGSIZE; // memory is 2GB, IO is last frame
 pub const N_FRAMES: usize = MEM_SIZE / PGSIZE;
 pub const PAGE_ENTRY_SIZE: usize = 4;
 pub const N_PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
+pub const TMP_PAGE_ENTRY: usize = N_PAGE_ENTRY - 1;
 
 const KERN_END: usize = 0x80000; // TODO: use linker to specify where it should be
 
@@ -277,6 +278,16 @@ impl PageTable {
             self.entries[i] = PageTableEntry::zero();
         }
     }
+    pub fn setup_tmp_table(table: &mut PageTable, tmp_table: &mut PageTable) {
+        table[TMP_PAGE_ENTRY].set_frame(
+            Frame::from_addr(PhysAddr((tmp_table as *const PageTable) as u64)),
+            Flag::VALID,
+        );
+        tmp_table[TMP_PAGE_ENTRY].set_frame(
+            Frame::from_addr(PhysAddr((table as *const PageTable) as u64)),
+            Flag::VALID,
+        );
+    }
 }
 
 impl ops::Index<usize> for PageTable {
@@ -294,17 +305,23 @@ impl ops::IndexMut<usize> for PageTable {
 
 pub struct Map<'a> {
     dir: &'a mut PageTable,
+    tmp_page: &'a mut PageTable,
 }
 
 impl<'a> Map<'a> {
-    pub fn new(dir: &'a mut PageTable) -> Map {
-        Map { dir }
+    pub fn new(dir: &'a mut PageTable, tmp_page: &'a mut PageTable) -> Map<'a> {
+        Map { dir, tmp_page }
     }
-    pub fn clone_dir(&self, table: &mut PageTable) {
-        for i in 0..N_PAGE_ENTRY {
+
+    pub fn clone_dir(&self, map: &mut Map) {
+        for i in 0..(N_PAGE_ENTRY - 1) {
             println!("{}", i);
-            table[i] = self.dir[i];
+            map.dir[i] = self.dir[i];
         }
+    }
+
+    fn vpn1_page(page: Page) -> Page {
+        Page::from_vpns([page.vpn1(), TMP_PAGE_ENTRY as u32])
     }
 
     fn create_next_table(
@@ -317,10 +334,12 @@ impl<'a> Map<'a> {
         let initialize;
         {
             let entry = &mut self.dir[page.vpn1() as usize];
+            let tmp_entry = &mut self.tmp_page[page.vpn1() as usize];
             println!("entry: {:x}", (entry as *mut PageTableEntry) as u64);
             initialize = if !entry.is_valid() {
                 frame = allocator.alloc()?;
                 entry.set_frame(frame, Flag::VALID);
+                tmp_entry.set_frame(frame, Flag::VALID);
                 true
             } else {
                 frame = Frame::from_addr(entry.phys_addr());
@@ -328,13 +347,13 @@ impl<'a> Map<'a> {
             };
         }
 
-        let table: &mut PageTable;
-        if !boot {
-            self.identity_map(frame, Flag::VALID, allocator)?;
+        let ptr: *mut PageTable;
+        if boot {
+            ptr = frame.phys_addr().as_mut_kernel_ptr();
+        } else {
+            ptr = Map::vpn1_page(page).base_addr().as_mut_ptr();
         }
-        let ptr: *mut PageTable = frame.phys_addr().as_mut_kernel_ptr();
-        table = unsafe { &mut (*ptr) };
-
+        let table: &mut PageTable = unsafe { &mut (*ptr) };
         if initialize {
             println!("init");
             table.init();

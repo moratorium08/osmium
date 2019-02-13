@@ -24,6 +24,7 @@ use csr::satp;
 extern "C" {
     static kernel_end: u8;
     static mut kernel_pgdir_ptr: u32;
+    static mut temporary_pgdir_ptr: u32;
     static mut kernel_frames_ptr: u32;
 }
 
@@ -35,16 +36,30 @@ fn get_kernel_end_addr() -> u64 {
 
 struct BootAlloc<'a> {
     pub procs: &'a mut [proc::Process<'a>; proc::N_PROCS],
+    pub proc_pages: &'a mut [paging::PageTable; proc::N_PROCS],
+    pub proc_tmp_pages: &'a mut [paging::PageTable; proc::N_PROCS],
 }
 
 // must call before memory management in order to reserve envs memory.
 fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
     let end = get_kernel_end_addr();
 
+    let proc_pages = unsafe { &mut *(end as *mut [paging::PageTable; proc::N_PROCS]) };
+    let end = end + (paging::PGSIZE * proc::N_PROCS) as u64;
+
+    let proc_tmp_pages = unsafe { &mut *(end as *mut [paging::PageTable; proc::N_PROCS]) };
+    let end = end + (paging::PGSIZE * proc::N_PROCS) as u64;
+
     let procs = unsafe { &mut *(end as *mut [proc::Process; proc::N_PROCS]) };
+    let end = end + (proc::N_PROCS as u64) * (proc::Process::size_of() as u64);
+
     (
-        end + (proc::N_PROCS as u64) * (proc::Process::size_of() as u64),
-        BootAlloc { procs },
+        end,
+        BootAlloc {
+            procs,
+            proc_pages,
+            proc_tmp_pages,
+        },
     )
 }
 
@@ -57,14 +72,20 @@ struct Kernel<'a> {
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
     println!("hello\n\n");
+
+    // setup kernel page table
     let kern_pgdir =
         unsafe { &mut *((&mut kernel_pgdir_ptr as *mut u32) as *mut paging::PageTable) };
     let kern_pgdir_addr = (kern_pgdir as *const paging::PageTable) as u32;
+    let kern_tmp_pgdir =
+        unsafe { &mut *((&mut temporary_pgdir_ptr as *mut u32) as *mut paging::PageTable) };
+
+    paging::PageTable::setup_tmp_table(kern_pgdir, kern_tmp_pgdir);
 
     let kernel_frames = unsafe { (&mut kernel_frames_ptr as *mut u32) };
     println!("kern frames addr {:p}", kernel_frames);
 
-    let mut mapper = paging::Map::new(kern_pgdir);
+    let mut mapper = paging::Map::new(kern_pgdir, kern_tmp_pgdir);
     println!("mapper created");
 
     let (kernel_memory_end, allocated) = boot_alloc();
@@ -109,13 +130,17 @@ pub extern "C" fn __start_rust() -> ! {
     println!("kernel space (identity) paging works!");
 
     println!("Let's create an user process");
-    let mut process_manager = proc::ProcessManager::new(allocated.procs);
+    let mut process_manager = proc::ProcessManager::new(
+        allocated.procs,
+        allocated.proc_pages,
+        allocated.proc_tmp_pages,
+    );
     let process = unsafe {
         &mut *(process_manager
             .alloc()
             .expect("failed to alloc process(program error)"))
     };
-    //process.create(&mut allocator, &mut mapper);
+    process.create(&mut allocator, &mut mapper);
     let nop_file = files::search("nop");
 
     println!("ok");
