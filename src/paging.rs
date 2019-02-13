@@ -52,6 +52,9 @@ impl PhysAddr {
         let addr: *mut T = addr as *mut T;
         addr
     }
+    pub fn kern_virt_addr(&self) -> VirtAddr {
+        VirtAddr(self.0 as u32)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -77,12 +80,21 @@ impl VirtAddr {
         addr
     }
 
+    pub fn from_ptr<T>(ptr: *const T) -> VirtAddr {
+        let addr = ptr as u32;
+        VirtAddr(addr)
+    }
+
     pub fn to_u32(&self) -> u32 {
         self.0
     }
 
     pub fn offset(&self, offset: u32) -> VirtAddr {
         VirtAddr(offset + self.0)
+    }
+
+    pub fn kern_phys_addr(&self) -> PhysAddr {
+        PhysAddr(self.0 as u64)
     }
 }
 
@@ -214,7 +226,7 @@ impl<'a> Allocator<'a> {
                 continue;
             }
             frames[stack] = Frame::from_addr(PhysAddr::from_page_index(i));
-            if i % 10000 == 9999 {
+            if i % 100000 == 99999 {
                 println!("{} % completed", (100 * i) / N_FRAMES);
             }
             stack += 1;
@@ -315,7 +327,6 @@ impl<'a> Map<'a> {
 
     pub fn clone_dir(&self, map: &mut Map) {
         for i in 0..(N_PAGE_ENTRY - 1) {
-            println!("{}", i);
             map.dir[i] = self.dir[i];
         }
     }
@@ -335,7 +346,6 @@ impl<'a> Map<'a> {
         {
             let entry = &mut self.dir[page.vpn1() as usize];
             let tmp_entry = &mut self.tmp_page[page.vpn1() as usize];
-            println!("entry: {:x}", (entry as *mut PageTableEntry) as u64);
             initialize = if !entry.is_valid() {
                 frame = allocator.alloc()?;
                 entry.set_frame(frame, Flag::VALID);
@@ -355,7 +365,6 @@ impl<'a> Map<'a> {
         }
         let table: &mut PageTable = unsafe { &mut (*ptr) };
         if initialize {
-            println!("init");
             table.init();
         }
         Ok(table)
@@ -368,9 +377,7 @@ impl<'a> Map<'a> {
         allocator: &mut Allocator,
         boot: bool,
     ) -> Result<(), PageError> {
-        println!("create_next_table");
         let vpn1 = self.create_next_table(page, allocator, boot)?;
-        println!("create_next_table");
         let entry = &mut vpn1[page.vpn0() as usize];
 
         if entry.is_valid() {
@@ -468,5 +475,13 @@ impl<'a> Map<'a> {
         allocator: &mut Allocator,
     ) -> Result<(), PageError> {
         self.map_region_inner(virt_addr, phys_addr, size, flag, allocator, true)
+    }
+
+    pub fn ppn(&self) -> u32 {
+        println!("page dir {:x}", self.dir as *const PageTable as u32);
+        (VirtAddr::from_ptr(self.dir as *const PageTable)
+            .kern_phys_addr()
+            .to_u64()
+            >> LOG_PGSIZE) as u32
     }
 }

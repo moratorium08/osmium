@@ -78,12 +78,18 @@ impl<'a> Process<'a> {
         Ok(())
     }
 
-    /*fn copy_kernel_table(&mut self, kernel_table: &paging::PageTable) {
-            let table = match self.mapper {
-                Some(ref mut m) => m,
-                None => panic!("copy kernel table failed"),
-            };
-    }*/
+    pub fn ppn(&self) -> u32 {
+        self.mapper.ppn()
+    }
+
+    pub fn region_alloc(
+        &mut self,
+        va: paging::VirtAddr,
+        pa: paging::PhysAddr,
+        size: usize,
+    ) -> Result<(), ProcessError> {
+        unimplemented!();
+    }
 }
 
 pub struct ProcessManager<'a> {

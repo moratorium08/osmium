@@ -42,7 +42,7 @@ struct BootAlloc<'a> {
 
 // must call before memory management in order to reserve envs memory.
 fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
-    let end = get_kernel_end_addr();
+    let end = utils::round_up(get_kernel_end_addr(), paging::PGSIZE as u64);
 
     let proc_pages = unsafe { &mut *(end as *mut [paging::PageTable; proc::N_PROCS]) };
     let end = end + (paging::PGSIZE * proc::N_PROCS) as u64;
@@ -52,6 +52,8 @@ fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
 
     let procs = unsafe { &mut *(end as *mut [proc::Process; proc::N_PROCS]) };
     let end = end + (proc::N_PROCS as u64) * (proc::Process::size_of() as u64);
+
+    let end = utils::round_up(end, paging::PGSIZE as u64);
 
     (
         end,
@@ -141,7 +143,22 @@ pub extern "C" fn __start_rust() -> ! {
             .expect("failed to alloc process(program error)"))
     };
     process.create(&mut allocator, &mut mapper);
-    let nop_file = files::search("nop");
+
+    // use proc's page table
+    satp::SATP::set_ppn(process.ppn());
+
+    let nop_file = match files::search("nop") {
+        Some(file) => file,
+        None => panic!("failed to find nop"),
+    };
+
+    let nop_elf = elf::Elf::new(nop_file.bytes);
+    for program in nop_elf.programs() {
+        match process.region_alloc(program.virt_addr, program.phys_addr, program.mem_size) {
+            Ok(()) => (),
+            Err(e) => panic!("failed to region alloc : {}", e),
+        };
+    }
 
     println!("ok");
     loop {}

@@ -1,13 +1,13 @@
 use core::slice;
 use paging;
 
-struct Elf<'a> {
+pub struct Elf<'a> {
     bytes: &'a [u8],
     elf: &'a ElfHeader,
 }
 
 impl<'a> Elf<'a> {
-    fn new(bytes: *const [u8]) -> Elf<'a> {
+    pub fn new(bytes: *const [u8]) -> Elf<'a> {
         let bytes = unsafe { &*bytes };
         let elf = unsafe {
             let data: *const ElfHeader = bytes.as_ptr() as *const ElfHeader;
@@ -15,7 +15,7 @@ impl<'a> Elf<'a> {
         };
         Elf { bytes, elf }
     }
-    fn programs(&'a self) -> Programs<'a> {
+    pub fn programs(&'a self) -> Programs<'a> {
         Programs {
             data: self.bytes,
             elf: self.elf,

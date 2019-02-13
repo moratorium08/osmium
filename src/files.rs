@@ -56,9 +56,9 @@ impl MemoryDirectory {
 }
 
 pub struct File<'a> {
-    name: &'a str,
-    bytes: *const [u8],
-    size: usize,
+    pub name: &'a str,
+    pub bytes: *const [u8],
+    pub size: usize,
 }
 
 impl<'a> File<'a> {
