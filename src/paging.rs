@@ -8,7 +8,6 @@ const MEM_SIZE: usize = (1 << 31) + PGSIZE; // memory is 2GB, IO is last frame
 pub const N_FRAMES: usize = MEM_SIZE / PGSIZE;
 pub const PAGE_ENTRY_SIZE: usize = 4;
 pub const N_PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
-const RECURSIVE_ENTRY: usize = N_PAGE_ENTRY - 2;
 
 const KERN_END: usize = 0x80000; // TODO: use linker to specify where it should be
 
@@ -278,20 +277,6 @@ impl PageTable {
             self.entries[i] = PageTableEntry::zero();
         }
     }
-    pub unsafe fn gen_recursive<'a>(base: *mut u32) -> &'a mut PageTable {
-        let mut table = &mut *(base as *mut PageTable);
-
-        let table_ptr = &mut table.entries[0] as *mut PageTableEntry;
-        let table_ptr = table_ptr as u64;
-
-        let frame = Frame::from_addr(PhysAddr(table_ptr));
-
-        table.set_recursive_entry(frame);
-        table
-    }
-    pub fn set_recursive_entry(&mut self, frame: Frame) {
-        self.entries[RECURSIVE_ENTRY].set_frame(frame, Flag::VALID);
-    }
 }
 
 impl ops::Index<usize> for PageTable {
@@ -323,31 +308,32 @@ impl<'a> Map<'a> {
     }
 
     fn create_next_table(
-        entry: &'a mut PageTableEntry,
-        next_table_page: Page,
+        &mut self,
+        page: Page,
         allocator: &mut Allocator,
         boot: bool,
     ) -> Result<&'a mut PageTable, PageError> {
-        println!("entry: {:x}", (entry as *mut PageTableEntry) as u64);
         let frame: Frame;
-        let initialize = if !entry.is_valid() {
-            frame = allocator.alloc()?;
-            entry.set_frame(frame, Flag::VALID);
-            true
-        } else {
-            frame = Frame::from_addr(entry.phys_addr());
-            false
-        };
+        let initialize;
+        {
+            let entry = &mut self.dir[page.vpn1() as usize];
+            println!("entry: {:x}", (entry as *mut PageTableEntry) as u64);
+            initialize = if !entry.is_valid() {
+                frame = allocator.alloc()?;
+                entry.set_frame(frame, Flag::VALID);
+                true
+            } else {
+                frame = Frame::from_addr(entry.phys_addr());
+                false
+            };
+        }
 
         let table: &mut PageTable;
-        if boot {
-            let ptr: *mut PageTable = frame.phys_addr().as_mut_kernel_ptr();
-            table = unsafe { &mut (*ptr) };
-        } else {
-            let ptr: *mut PageTable = next_table_page.base_addr().as_mut_ptr();
-            println!("ptr: {}", ptr as u64);
-            table = unsafe { &mut (*ptr) };
+        if !boot {
+            self.identity_map(frame, Flag::VALID, allocator)?;
         }
+        let ptr: *mut PageTable = frame.phys_addr().as_mut_kernel_ptr();
+        table = unsafe { &mut (*ptr) };
 
         if initialize {
             println!("init");
@@ -363,14 +349,8 @@ impl<'a> Map<'a> {
         allocator: &mut Allocator,
         boot: bool,
     ) -> Result<(), PageError> {
-        let vpn1_page = vpn1_page(page);
         println!("create_next_table");
-        let vpn1 = Map::create_next_table(
-            &mut self.dir[page.vpn1() as usize],
-            vpn1_page,
-            allocator,
-            boot,
-        )?;
+        let vpn1 = self.create_next_table(page, allocator, boot)?;
         println!("create_next_table");
         let entry = &mut vpn1[page.vpn0() as usize];
 
@@ -470,9 +450,4 @@ impl<'a> Map<'a> {
     ) -> Result<(), PageError> {
         self.map_region_inner(virt_addr, phys_addr, size, flag, allocator, true)
     }
-}
-
-fn vpn1_page(page: Page) -> Page {
-    println!("RECV: {}", RECURSIVE_ENTRY);
-    Page::from_vpns([page.vpn1(), RECURSIVE_ENTRY as u32])
 }

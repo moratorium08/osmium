@@ -1,4 +1,4 @@
-use core::intrinsics::transmute;
+use core::slice;
 use paging;
 
 struct Elf<'a> {
@@ -10,7 +10,7 @@ impl<'a> Elf<'a> {
     fn new(bytes: *const [u8]) -> Elf<'a> {
         let bytes = unsafe { &*bytes };
         let elf = unsafe {
-            let data: *const ElfHeader = transmute(bytes);
+            let data: *const ElfHeader = bytes.as_ptr() as *const ElfHeader;
             &*(data)
         };
         Elf { bytes, elf }
@@ -39,7 +39,7 @@ pub struct Programs<'a> {
 }
 
 impl<'a> Iterator for Programs<'a> {
-    type Item = &'a Program<'a>;
+    type Item = Program<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.i < (self.elf.phnum as usize) {
@@ -51,11 +51,12 @@ impl<'a> Iterator for Programs<'a> {
             };
             self.i += 1;
             let data = unsafe {
-                let data: *const [u8] =
-                    transmute(self.data.as_ptr() as usize + item.offset as usize);
-                &*(data)
+                &*(slice::from_raw_parts(
+                    (self.data.as_ptr() as usize + item.offset as usize) as *const u8,
+                    item.filesz as usize,
+                ))
             };
-            Some(&Program {
+            Some(Program {
                 virt_addr: paging::VirtAddr::new(item.va),
                 phys_addr: paging::PhysAddr::new(item.pa as u64),
                 mem_size: item.memsz as usize,
@@ -69,7 +70,7 @@ impl<'a> Iterator for Programs<'a> {
 }
 
 #[repr(C)]
-struct ElfHeader {
+pub struct ElfHeader {
     pub magic: u32,
     pub elf: [u8; 12],
     pub etype: u16,
@@ -88,7 +89,7 @@ struct ElfHeader {
 }
 
 #[repr(C)]
-struct ProgramHeader {
+pub struct ProgramHeader {
     pub ptype: u32,
     pub offset: u32,
     pub va: u32,

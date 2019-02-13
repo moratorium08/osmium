@@ -90,6 +90,7 @@ impl<'a> Process<'a> {
         let table: &mut paging::PageTable =
             unsafe { &mut (*frame.phys_addr().as_mut_kernel_ptr()) };
         // register kernel address space
+        // error handle
         mapper.identity_map(
             frame,
             paging::Flag::READ | paging::Flag::WRITE | paging::Flag::VALID,
@@ -98,7 +99,6 @@ impl<'a> Process<'a> {
         println!("neko");
         mapper.clone_dir(table);
         println!("hoge");
-        table.set_recursive_entry(frame);
         self.mapper = Some(paging::Map::new(table));
         Ok(())
     }

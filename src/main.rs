@@ -57,7 +57,8 @@ struct Kernel<'a> {
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
     println!("hello\n\n");
-    let kern_pgdir = unsafe { paging::PageTable::gen_recursive(&mut kernel_pgdir_ptr as *mut u32) };
+    let kern_pgdir =
+        unsafe { &mut *((&mut kernel_pgdir_ptr as *mut u32) as *mut paging::PageTable) };
     let kern_pgdir_addr = (kern_pgdir as *const paging::PageTable) as u32;
 
     let kernel_frames = unsafe { (&mut kernel_frames_ptr as *mut u32) };

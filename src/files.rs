@@ -1,6 +1,6 @@
 /* simulates file systems */
 /* This is very poor system in order to create shell */
-use core::intrinsics::transmute;
+use core::slice;
 
 const DIRECTORY_FILE_LIMIT: usize = 4;
 
@@ -18,8 +18,8 @@ struct MemoryFile {
 
 impl MemoryFile {
     pub fn size(&self) -> usize {
-        let start = unsafe { (self.start as *const u8) as usize };
-        let end = unsafe { (self.end as *const u8) as usize };
+        let start = (self.start as *const u8) as usize;
+        let end = (self.end as *const u8) as usize;
         end - start
     }
 }
@@ -29,13 +29,13 @@ struct MemoryDirectory {
     pub files: [Option<MemoryFile>; DIRECTORY_FILE_LIMIT],
 }
 
-static root: MemoryDirectory = MemoryDirectory {
+static ROOT: MemoryDirectory = MemoryDirectory {
     name: "",
     files: [
         Some(MemoryFile {
             name: "nop",
-            start: transmute(&nop_start),
-            end: transmute(&nop_end),
+            start: unsafe { &nop_start },
+            end: unsafe { &nop_end },
         }),
         None,
         None,
@@ -68,10 +68,10 @@ impl<'a> File<'a> {
 }
 
 pub fn search<'a>(filename: &'a str) -> Option<File<'a>> {
-    match root.search(filename) {
+    match ROOT.search(filename) {
         Some(file) => {
-            let bytes: *const [u8] = transmute(file.start);
             let size = file.size();
+            let bytes: &[u8] = unsafe { slice::from_raw_parts(file.start as *const u8, size) };
             Some(File::new(filename, bytes, size))
         }
         None => None,
