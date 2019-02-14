@@ -26,12 +26,19 @@ temporary_pgdir_ptr:
 kernel_frames_ptr:
     .skip 2097152
 
+.global stack_stop
+stack_stop:
+    .skip 4096
+stack:
+    .skip 8097152
+stack_end:
+
+# followings are not aligned data
+.option norvc
+.section .programs, "ax",@progbits
 .global nop_start
 nop_start:
     .incbin "misc/bin/nop"
 .global nop_end
 nop_end:
-stack:
-    .skip 8097152
-stack_end:
 

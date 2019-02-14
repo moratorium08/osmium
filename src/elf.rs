@@ -1,19 +1,36 @@
 use core::slice;
 use paging;
 
+const ELF_MAGIC: u32 = 0x464c457f;
+
 pub struct Elf<'a> {
     bytes: &'a [u8],
     elf: &'a ElfHeader,
 }
 
+#[derive(Debug)]
+pub enum ElfError {
+    InvalidMagic,
+}
+
 impl<'a> Elf<'a> {
-    pub fn new(bytes: *const [u8]) -> Elf<'a> {
+    pub fn new(bytes: *const [u8]) -> Result<Elf<'a>, ElfError> {
         let bytes = unsafe { &*bytes };
+        for i in 0..100 {
+            print!("{} ", bytes[i]);
+            if i % 10 == 9 {
+                println!();
+            }
+        }
         let elf = unsafe {
             let data: *const ElfHeader = bytes.as_ptr() as *const ElfHeader;
             &*(data)
         };
-        Elf { bytes, elf }
+        println!("{:?}", elf);
+        if elf.magic != ELF_MAGIC {
+            return Err(ElfError::InvalidMagic);
+        }
+        Ok(Elf { bytes, elf })
     }
     pub fn programs(&'a self) -> Programs<'a> {
         Programs {
@@ -28,6 +45,7 @@ pub struct Program<'a> {
     pub virt_addr: paging::VirtAddr,
     pub mem_size: usize,
     pub phys_addr: paging::PhysAddr,
+    pub flag: paging::Flag,
     pub data: &'a [u8],
     pub file_size: usize,
 }
@@ -38,11 +56,30 @@ pub struct Programs<'a> {
     pub i: usize,
 }
 
+fn parse_elf_flag(flags: u32) -> paging::Flag {
+    let mut flag = paging::Flag::VALID;
+
+    if flags & 1 == 1 {
+        flag |= paging::Flag::EXEC;
+    }
+    if (flags >> 1) & 1 == 1 {
+        flag |= paging::Flag::WRITE;
+    }
+    if (flags >> 2) & 1 == 1 {
+        flag |= paging::Flag::READ;
+    }
+    flag
+}
+
 impl<'a> Iterator for Programs<'a> {
     type Item = Program<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.i < (self.elf.phnum as usize) {
+            println!(
+                "file place at {}",
+                (self.elf.phoff as usize + self.i * self.elf.phentsize as usize)
+            );
             let item = unsafe {
                 &*((self.data.as_ptr() as usize
                     + self.elf.phoff as usize
@@ -61,6 +98,7 @@ impl<'a> Iterator for Programs<'a> {
                 phys_addr: paging::PhysAddr::new(item.pa as u64),
                 mem_size: item.memsz as usize,
                 file_size: item.filesz as usize,
+                flag: parse_elf_flag(item.flags),
                 data,
             })
         } else {
@@ -69,6 +107,7 @@ impl<'a> Iterator for Programs<'a> {
     }
 }
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct ElfHeader {
     pub magic: u32,

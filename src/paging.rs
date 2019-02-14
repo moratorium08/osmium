@@ -16,7 +16,7 @@ fn start_paging() {
     satp::SATP::enable_paging();
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct PhysAddr(u64);
 
 impl fmt::Display for PhysAddr {
@@ -57,7 +57,7 @@ impl PhysAddr {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct VirtAddr(u32);
 
 impl fmt::Display for VirtAddr {
@@ -108,7 +108,7 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Page {
     ref_count: u32,
     addr: VirtAddr,
@@ -136,7 +136,6 @@ impl Page {
         [vpn0, vpn1]
     }
     pub fn from_vpns(vpns: [u32; 2]) -> Page {
-        println!("from_vpns{:x}", vpns[1] << 22 | vpns[0] << 12);
         let addr = VirtAddr::new((vpns[1] << 22) | (vpns[0] << 12));
         Page { ref_count: 0, addr }
     }
@@ -177,7 +176,7 @@ impl Iterator for PageRange {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Frame {
     addr: PhysAddr,
 }
@@ -208,7 +207,7 @@ pub struct Allocator<'a> {
     stack: usize,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum PageError {
     FailedToAllocMemory,
     ProgramError(&'static str),
@@ -239,7 +238,6 @@ impl<'a> Allocator<'a> {
             Err(PageError::FailedToAllocMemory)
         } else {
             self.stack -= 1;
-            println!("{}", self.frames[self.stack].phys_addr().to_u64());
             Ok(self.frames[self.stack].clone())
         }
     }
@@ -271,6 +269,7 @@ impl PageTableEntry {
         self.flag().contains(Flag::VALID)
     }
     fn set_frame(&mut self, frame: Frame, flag: Flag) {
+        // println!("{:x} | {:x} = {:x}", frame.to_ppn(), flag.bits(), .to_ppn() | flag.bits());
         self.entry = frame.to_ppn() | flag.bits()
     }
     fn phys_addr(&self) -> PhysAddr {
@@ -349,7 +348,8 @@ impl<'a> Map<'a> {
             initialize = if !entry.is_valid() {
                 frame = allocator.alloc()?;
                 entry.set_frame(frame, Flag::VALID);
-                tmp_entry.set_frame(frame, Flag::VALID);
+                tmp_entry.set_frame(frame, Flag::READ | Flag::WRITE | Flag::VALID);
+                println!("entry {:x}", tmp_entry.flag());
                 true
             } else {
                 frame = Frame::from_addr(entry.phys_addr());
@@ -380,9 +380,9 @@ impl<'a> Map<'a> {
         let vpn1 = self.create_next_table(page, allocator, boot)?;
         let entry = &mut vpn1[page.vpn0() as usize];
 
-        if entry.is_valid() {
+        /*if entry.is_valid() {
             return Err(PageError::ProgramError("tried to map already mapped page"));
-        }
+        }*/
         entry.set_frame(frame, flag);
 
         Ok(())
@@ -450,7 +450,6 @@ impl<'a> Map<'a> {
         }
         let virt_addr = VirtAddr::new(phys_addr as u32);
         let page = Page::from_addr(virt_addr);
-        println!("lets start");
         self.map(page, frame, flag, allocator)
     }
 

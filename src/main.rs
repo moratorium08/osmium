@@ -13,6 +13,7 @@ pub mod uart;
 pub mod csr;
 pub mod elf;
 pub mod files;
+pub mod memutil;
 pub mod paging;
 pub mod proc;
 pub mod trap;
@@ -26,6 +27,7 @@ extern "C" {
     static mut kernel_pgdir_ptr: u32;
     static mut temporary_pgdir_ptr: u32;
     static mut kernel_frames_ptr: u32;
+    static mut stack_stop: u8;
 }
 
 const IO_REGION: u64 = 0x80000000;
@@ -43,6 +45,7 @@ struct BootAlloc<'a> {
 // must call before memory management in order to reserve envs memory.
 fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
     let end = utils::round_up(get_kernel_end_addr(), paging::PGSIZE as u64);
+    println!("end {:x}", get_kernel_end_addr());
 
     let proc_pages = unsafe { &mut *(end as *mut [paging::PageTable; proc::N_PROCS]) };
     let end = end + (paging::PGSIZE * proc::N_PROCS) as u64;
@@ -116,6 +119,16 @@ pub extern "C" fn __start_rust() -> ! {
     println!("kernel mapping created");
 
     if let Err(e) = mapper.boot_map_region(
+        paging::VirtAddr::new(unsafe { &stack_stop as *const u8 as u32 }),
+        paging::PhysAddr::new(unsafe { &stack_stop as *const u8 as u64 }),
+        paging::PGSIZE,
+        paging::Flag::empty(),
+        &mut allocator,
+    ) {
+        panic!("Failed to map kernel region. Reason: {:?}", e);
+    }
+
+    if let Err(e) = mapper.boot_map_region(
         paging::VirtAddr::new(IO_REGION as u32),
         paging::PhysAddr::new(IO_REGION),
         paging::PGSIZE,
@@ -152,12 +165,32 @@ pub extern "C" fn __start_rust() -> ! {
         None => panic!("failed to find nop"),
     };
 
-    let nop_elf = elf::Elf::new(nop_file.bytes);
+    println!("nop_file bytes: {}", nop_file.bytes as *const u8 as usize);
+    let nop_elf = elf::Elf::new(nop_file.bytes).expect("failed to parse ELF");
     for program in nop_elf.programs() {
-        match process.region_alloc(program.virt_addr, program.phys_addr, program.mem_size) {
+        println!(
+            "{} -> {}: size {}",
+            program.virt_addr, program.phys_addr, program.mem_size
+        );
+        match process.region_alloc(
+            program.virt_addr,
+            utils::round_up(program.mem_size as u64, paging::PGSIZE as u64) as usize,
+            /*program.flag,*/ // after region alloc, set flag
+            paging::Flag::READ | paging::Flag::WRITE | paging::Flag::VALID,
+            &mut allocator,
+        ) {
             Ok(()) => (),
             Err(e) => panic!("failed to region alloc : {}", e),
         };
+        let region = program.virt_addr.as_mut_ptr();
+        unsafe {
+            memutil::memset(
+                region,
+                0,
+                utils::round_up(program.mem_size as u64, paging::PGSIZE as u64) as usize,
+            );
+            memutil::memcpy(region, program.data, program.file_size);
+        }
     }
 
     println!("ok");

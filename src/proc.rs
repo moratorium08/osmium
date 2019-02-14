@@ -18,6 +18,7 @@ enum Status {
 #[derive(Debug, Copy, Clone)]
 pub enum ProcessError {
     FailedToCreateProcess,
+    FailedToMap(paging::PageError),
     ProgramError(&'static str),
 }
 
@@ -25,6 +26,7 @@ impl ProcessError {
     fn to_str(&self) -> &'static str {
         match self {
             ProcessError::FailedToCreateProcess => "failed to create process",
+            ProcessError::FailedToMap(_) => "failed to map",
             ProcessError::ProgramError(s) => s,
         }
     }
@@ -85,10 +87,23 @@ impl<'a> Process<'a> {
     pub fn region_alloc(
         &mut self,
         va: paging::VirtAddr,
-        pa: paging::PhysAddr,
         size: usize,
+        flag: paging::Flag,
+        allocator: &mut paging::Allocator,
     ) -> Result<(), ProcessError> {
-        unimplemented!();
+        for page in paging::Page::range(va, size as u32) {
+            match allocator.alloc() {
+                Ok(frame) => {
+                    println!("{:?} -> {:?}", page, frame);
+                    match self.mapper.map(page, frame, flag, allocator) {
+                        Ok(_) => (),
+                        Err(e) => return Err(ProcessError::FailedToMap(e)),
+                    };
+                }
+                Err(e) => return Err(ProcessError::FailedToMap(e)),
+            }
+        }
+        Ok(())
     }
 }
 

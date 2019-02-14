@@ -6,7 +6,9 @@ pub fn bit_range(x: u32, lb: u32, ub: u32) -> u32 {
 }
 
 pub fn round_up(x: u64, modulo: u64) -> u64 {
-    x - 1 + modulo - (x - 1) % modulo
+    let tmp = x % modulo;
+    let y = modulo - if tmp == 0 { modulo } else { tmp };
+    x + y
 }
 
 #[test]

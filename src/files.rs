@@ -68,6 +68,9 @@ impl<'a> File<'a> {
 }
 
 pub fn search<'a>(filename: &'a str) -> Option<File<'a>> {
+    println!("nop start {:x}", unsafe { (&nop_start) } as *const u8
+        as usize);
+    println!("nop end {:x}", unsafe { (&nop_end) } as *const u8 as usize);
     match ROOT.search(filename) {
         Some(file) => {
             let size = file.size();
