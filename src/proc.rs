@@ -138,7 +138,7 @@ impl<'a> Process<'a> {
                 program.virt_addr,
                 utils::round_up(program.mem_size as u64, paging::PGSIZE as u64) as usize,
                 /*program.flag,*/ // after region alloc, set flag
-                paging::Flag::READ | paging::Flag::WRITE | paging::Flag::VALID,
+                paging::Flag::EXEC | paging::Flag::USER | paging::Flag::READ | paging::Flag::WRITE | paging::Flag::VALID,
                 allocator,
             )?;
             let region = program.virt_addr.as_mut_ptr();
