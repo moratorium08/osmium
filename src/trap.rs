@@ -1,3 +1,6 @@
+use csr::sepc;
+use csr::CSRWrite;
+
 #[derive(Clone, Copy, Debug)]
 pub enum Interruption {
     UserSoftware,
@@ -97,4 +100,132 @@ impl Exception {
             _ => None,
         }
     }
+}
+
+#[repr(C)]
+pub struct Register {
+    pub int_regs: [u32; 32],
+    pub float_regs: [u32; 32],
+}
+
+impl Register {
+    pub fn zeros() -> Register {
+        Register {
+            int_regs: [0; 32],
+            float_regs: [0; 32],
+        }
+    }
+}
+
+pub struct TrapFrame {
+    pub pc: u32,
+    pub sp: u32,
+    pub regs: Register,
+}
+
+impl TrapFrame {
+    pub fn new(pc: u32, sp: u32) -> TrapFrame {
+        TrapFrame {
+            pc,
+            sp,
+            regs: Register::zeros(),
+        }
+    }
+}
+
+pub unsafe fn pop_trap_frame(tf: &TrapFrame) -> ! {
+    // TODO: prohibit interrupt
+    // mv 'real' sp to scratch
+    // sepc::SEPC::write_csr(tf.pc);
+
+    asm!(
+        "
+        csrrw x0, sscratch, $0\n
+        csrrw x0, sepc, $1\n
+        "
+        :
+        : "r"(tf.sp), "r"(tf.pc)
+
+    );
+
+    asm!(
+        "
+        mv sp, $0\n
+
+        lw x0, 0(sp)\n
+        lw x1, 4(sp)\n
+        lw x3, 12(sp)\n
+        lw x4, 16(sp)\n
+        lw x5, 20(sp)\n
+        lw x6, 24(sp)\n
+        lw x7, 28(sp)\n
+        lw x8, 32(sp)\n
+        lw x9, 36(sp)\n
+        lw x10, 40(sp)\n
+        lw x11, 44(sp)\n
+        lw x12, 48(sp)\n
+        lw x13, 52(sp)\n
+        lw x14, 56(sp)\n
+        lw x15, 60(sp)\n
+        lw x16, 64(sp)\n
+        lw x17, 68(sp)\n
+        lw x18, 72(sp)\n
+        lw x19, 76(sp)\n
+        lw x20, 80(sp)\n
+        lw x21, 84(sp)\n
+        lw x22, 88(sp)\n
+        lw x23, 92(sp)\n
+        lw x24, 96(sp)\n
+        lw x25, 100(sp)\n
+        lw x26, 104(sp)\n
+        lw x27, 108(sp)\n
+        lw x28, 112(sp)\n
+        lw x29, 116(sp)\n
+        lw x30, 120(sp)\n
+        lw x31, 124(sp)\n
+
+        addi sp, sp, 128\n
+
+        csrrs sp, sscratch, x0\n
+        sret
+    "
+    :
+    : "r"(&tf.regs as *const Register as usize)
+    );
+
+    /*
+        flw f0, 0(sp)\n
+        flw f1, 4(sp)\n
+        flw f3, 12(sp)\n
+        flw f4, 16(sp)\n
+        flw f5, 20(sp)\n
+        flw f6, 24(sp)\n
+        flw f7, 28(sp)\n
+        flw f8, 32(sp)\n
+        flw f9, 36(sp)\n
+        flw f10, 40(sp)\n
+        flw f11, 44(sp)\n
+        flw f12, 48(sp)\n
+        flw f13, 52(sp)\n
+        flw f14, 56(sp)\n
+        flw f15, 60(sp)\n
+        flw f16, 64(sp)\n
+        flw f17, 68(sp)\n
+        flw f18, 72(sp)\n
+        flw f19, 76(sp)\n
+        flw f20, 80(sp)\n
+        flw f21, 84(sp)\n
+        flw f22, 88(sp)\n
+        flw f23, 92(sp)\n
+        flw f24, 96(sp)\n
+        flw f25, 100(sp)\n
+        flw f26, 104(sp)\n
+        flw f27, 108(sp)\n
+        flw f28, 112(sp)\n
+        flw f29, 116(sp)\n
+        flw f30, 120(sp)\n
+        flw f31, 124(sp)\n
+    */
+
+    panic!("failed to sret")
 }

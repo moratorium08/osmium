@@ -5,7 +5,7 @@ const ELF_MAGIC: u32 = 0x464c457f;
 
 pub struct Elf<'a> {
     bytes: &'a [u8],
-    elf: &'a ElfHeader,
+    pub elf: &'a ElfHeader,
 }
 
 #[derive(Debug)]

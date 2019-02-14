@@ -13,6 +13,7 @@ pub mod uart;
 pub mod csr;
 pub mod elf;
 pub mod files;
+pub mod memlayout;
 pub mod memutil;
 pub mod paging;
 pub mod proc;
@@ -76,7 +77,31 @@ struct Kernel<'a> {
 
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
-    println!("hello\n\n");
+    //println!("hello\n\n");
+
+    /*println!("enter two uint8_t values a, b please");
+    let a = (uart::read_byte() - 0x30) as u32;
+    let _ = uart::read_byte();
+    let b = (uart::read_byte() - 0x30) as u32;
+    let _ = uart::read_byte();
+    println!("{} / {} = {}", a, b, a / b);
+    println!("{} % {} = {}", a, b, a % b);
+    println!("enter two int8_t values a, b please");
+    let mut a = a as i32;
+    let mut b = b as i32;
+
+    println!("{} / {} = {}", a, b, a / b);
+    println!("{} % {} = {}", a, b, a % b);
+    a = -1i32 * a;
+    println!("{} / {} = {}", a, b, a / b);
+    println!("{} % {} = {}", a, b, a % b);
+    b = -1i32 * b;
+    println!("{} / {} = {}", a, b, a / b);
+    println!("{} % {} = {}", a, b, a % b);
+    a = -1i32 * a;
+    println!("{} / {} = {}", a, b, a / b);
+    println!("{} % {} = {}", a, b, a % b);
+    */
 
     // setup kernel page table
     let kern_pgdir =
@@ -167,32 +192,14 @@ pub extern "C" fn __start_rust() -> ! {
 
     println!("nop_file bytes: {}", nop_file.bytes as *const u8 as usize);
     let nop_elf = elf::Elf::new(nop_file.bytes).expect("failed to parse ELF");
-    for program in nop_elf.programs() {
-        println!(
-            "{} -> {}: size {}",
-            program.virt_addr, program.phys_addr, program.mem_size
-        );
-        match process.region_alloc(
-            program.virt_addr,
-            utils::round_up(program.mem_size as u64, paging::PGSIZE as u64) as usize,
-            /*program.flag,*/ // after region alloc, set flag
-            paging::Flag::READ | paging::Flag::WRITE | paging::Flag::VALID,
-            &mut allocator,
-        ) {
-            Ok(()) => (),
-            Err(e) => panic!("failed to region alloc : {}", e),
-        };
-        let region = program.virt_addr.as_mut_ptr();
-        unsafe {
-            memutil::memset(
-                region,
-                0,
-                utils::round_up(program.mem_size as u64, paging::PGSIZE as u64) as usize,
-            );
-            memutil::memcpy(region, program.data, program.file_size);
-        }
-    }
 
+    match process.load_elf(&nop_elf, &mut allocator) {
+        Ok(()) => (),
+        Err(e) => panic!("failed to load elf: {}", e),
+    };
+    let tf = trap::TrapFrame::new(nop_elf.elf.entry, memlayout::USER_SATCK_BOTTOMN);
+    process.set_trap_frame(tf);
+    process.run();
     println!("ok");
     loop {}
 }
