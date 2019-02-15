@@ -1,6 +1,6 @@
 pub unsafe fn memset(buf: *mut u8, byte: u8, size: usize) {
     let mut buf = buf;
-    for i in 0..size {
+    for _ in 0..size {
         *buf = byte;
         buf = (buf as usize + 1) as *mut u8;
     }

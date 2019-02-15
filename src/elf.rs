@@ -139,6 +139,7 @@ pub struct ProgramHeader {
     pub align: u32,
 }
 
+#[allow(dead_code)]
 #[repr(C)]
 struct SectionHeader {
     name: u32,
@@ -152,5 +153,3 @@ struct SectionHeader {
     addralign: u32,
     entsize: u32,
 }
-
-pub fn parse(bytes: *const [u8]) {}

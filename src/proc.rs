@@ -80,11 +80,7 @@ impl<'a> Process<'a> {
         unsafe { size_of_val(p) }
     }
 
-    pub fn create(
-        &mut self,
-        allocator: &mut paging::Allocator,
-        mapper: &mut paging::Map,
-    ) -> Result<(), ProcessError> {
+    pub fn create(&mut self, mapper: &mut paging::Map) -> Result<(), ProcessError> {
         mapper.clone_dir(&mut self.mapper);
         Ok(())
     }
@@ -158,7 +154,7 @@ impl<'a> Process<'a> {
             memlayout::USER_STACK_SIZE as usize,
             paging::Flag::VALID | paging::Flag::READ | paging::Flag::WRITE | paging::Flag::USER,
             allocator,
-        );
+        )?;
 
         satp::SATP::set_ppn(old_satp);
         Ok(())

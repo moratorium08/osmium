@@ -1,6 +1,5 @@
 use core::fmt;
 use core::ops;
-use csr::satp;
 
 pub const LOG_PGSIZE: usize = 12;
 pub const PGSIZE: usize = 1 << LOG_PGSIZE;
@@ -9,12 +8,6 @@ pub const N_FRAMES: usize = MEM_SIZE / PGSIZE;
 pub const PAGE_ENTRY_SIZE: usize = 4;
 pub const N_PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
 pub const TMP_PAGE_ENTRY: usize = N_PAGE_ENTRY - 1;
-
-const KERN_END: usize = 0x80000; // TODO: use linker to specify where it should be
-
-fn start_paging() {
-    satp::SATP::enable_paging();
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct PhysAddr(u64);
@@ -182,10 +175,6 @@ pub struct Frame {
 }
 
 impl Frame {
-    fn void_frame() -> Frame {
-        Frame { addr: PhysAddr(0) }
-    }
-
     pub fn from_addr(addr: PhysAddr) -> Frame {
         Frame { addr }
     }

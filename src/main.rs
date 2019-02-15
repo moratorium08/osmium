@@ -158,7 +158,7 @@ pub extern "C" fn __start_rust() -> ! {
 
     println!("kernel space (identity) paging works!");
 
-    let mut process_manager = proc::ProcessManager::new(
+    let process_manager = proc::ProcessManager::new(
         allocated.procs,
         allocated.proc_pages,
         allocated.proc_tmp_pages,
@@ -187,7 +187,10 @@ pub extern "C" fn __start_rust() -> ! {
             .alloc()
             .expect("failed to alloc process(program error)"))
     };
-    process.create(&mut kernel.allocator, &mut kernel.mapper);
+    match process.create(&mut kernel.mapper) {
+        Ok(()) => (),
+        Err(e) => panic!("failed to create process: {}", e),
+    };
 
     let nop_file = match files::search("nop") {
         Some(file) => file,
