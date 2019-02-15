@@ -35,3 +35,8 @@ pub fn sys_write(buf: &[u8], size: usize) -> u32 {
 pub fn sys_read(buf: &mut [u8], size: usize) -> u32{
     syscall_2(1, buf.as_ptr() as u32, size as u32)
 }
+
+pub fn sys_exit(status: u32) -> ! { 
+    syscall_1(2, status);
+    loop {} // here does not reach
+}

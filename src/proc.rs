@@ -19,7 +19,7 @@ enum Status {
     Running,
     Runnable,
     NotRunnable,
-    Zonmie,
+    Zonmbie,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -57,6 +57,7 @@ pub struct Process<'a> {
     proc_type: Type,
     status: Status,
     pub trap_frame: trap::TrapFrame,
+    pub exit_code: u32,
 }
 
 impl<'a> Process<'a> {
@@ -166,6 +167,11 @@ impl<'a> Process<'a> {
         unsafe {
             trap::pop_trap_frame(&self.trap_frame);
         }
+    }
+
+    pub fn exit(&mut self, exit_code: u32) {
+        self.status = Status::Zonmbie;
+        self.exit_code = exit_code;
     }
 }
 

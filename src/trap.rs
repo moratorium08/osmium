@@ -1,5 +1,5 @@
 use core::fmt;
-use statics;
+use kernel;
 use stvec;
 use syscall;
 
@@ -253,44 +253,21 @@ pub fn trap_init() {
     stvec::STVEC::set_trap_base(trap_entry_addr);
 }
 
-pub fn syscall_dispatch(
-    sc: syscall::Syscall,
-    tf: &mut TrapFrame,
-) -> Result<(), syscall::SyscallError> {
-    let result = match sc {
-        syscall::Syscall::UartRead { buf, size } => syscall::uart_read(buf, size)?,
-        syscall::Syscall::UartWrite { buf, size } => syscall::uart_write(buf, size)?,
-    };
-    tf.regs.set_syscall_result(result);
-    Ok(())
-}
-
 pub fn handle_envcall(mut tf: TrapFrame) -> ! {
+    let kernel = unsafe { kernel::get_kernel() };
     let e = match syscall::Syscall::from_trap_frame(&tf) {
-        Ok(syscall) => syscall_dispatch(syscall, &mut tf),
+        Ok(syscall) => syscall::syscall_dispatch(syscall, kernel),
         Err(e) => {
             println!("failed to run env call: {}", e);
             Err(e)
         }
     };
     match e {
-        Ok(()) => {
-            let kernel = unsafe { statics::get_kernel() };
-            print!("pc {:x} -> ", tf.pc);
-            kernel
-                .current_process
-                .as_mut()
-                .expect("program error. failed to get process")
-                .trap_frame = tf;
-            println!(
-                "{:x}",
-                kernel.current_process.as_mut().expect("").trap_frame.pc
-            );
-            kernel
-                .current_process
-                .as_mut()
-                .expect("program error. failed to run process")
-                .run()
+        Ok(result) => {
+            tf.regs.set_syscall_result(result);
+            kernel.update_current_process_trap_frame(tf);
+
+            kernel.run_into_user()
         }
         Err(e) => {
             // handle kill process

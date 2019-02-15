@@ -13,11 +13,11 @@ pub mod uart;
 pub mod csr;
 pub mod elf;
 pub mod files;
+pub mod kernel;
 pub mod memlayout;
 pub mod memutil;
 pub mod paging;
 pub mod proc;
-pub mod statics;
 pub mod syscall;
 pub mod trap;
 pub mod utils;
@@ -45,7 +45,7 @@ struct BootAlloc<'a> {
     pub procs: &'a mut [proc::Process<'a>; proc::N_PROCS],
     pub proc_pages: &'a mut [paging::PageTable; proc::N_PROCS],
     pub proc_tmp_pages: &'a mut [paging::PageTable; proc::N_PROCS],
-    pub kernel: &'a mut statics::Kernel<'a>,
+    pub kernel: &'a mut kernel::Kernel<'a>,
 }
 
 // must call before memory management in order to reserve envs memory.
@@ -63,8 +63,8 @@ fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
     let end = end + (proc::N_PROCS as u64) * (proc::Process::size_of() as u64);
     let end = utils::round_up(end, paging::PGSIZE as u64);
 
-    let kernel = unsafe { &mut *(end as *mut statics::Kernel) };
-    let end = end + (statics::Kernel::size_of() as u64);
+    let kernel = unsafe { &mut *(end as *mut kernel::Kernel) };
+    let end = end + (kernel::Kernel::size_of() as u64);
     let end = utils::round_up(end, paging::PGSIZE as u64);
 
     (
@@ -128,7 +128,7 @@ pub extern "C" fn __start_rust() -> ! {
     println!("mapper created");
 
     let (kernel_memory_end, allocated) = boot_alloc();
-    statics::set_kernel_ptr(allocated.kernel);
+    kernel::set_kernel_ptr(allocated.kernel);
     let is_used = |addr| {
         if (addr as u64) < kernel_memory_end + (paging::PGSIZE as u64) {
             return true;
@@ -196,7 +196,7 @@ pub extern "C" fn __start_rust() -> ! {
     );
     // finished initializing a kernel
 
-    let kernel = statics::Kernel {
+    let kernel = kernel::Kernel {
         mapper,
         allocator,
         process_manager,
@@ -205,13 +205,13 @@ pub extern "C" fn __start_rust() -> ! {
     println!("setting kernel");
 
     unsafe {
-        statics::set_kernel(kernel);
+        kernel::set_kernel(kernel);
     }
     trap::trap_init();
 
     println!("ok. Finished kernel booting");
     println!("Let's create an user process");
-    let kernel = unsafe { statics::get_kernel() };
+    let kernel = unsafe { kernel::get_kernel() };
     let process = unsafe {
         &mut *(kernel
             .process_manager
@@ -239,12 +239,7 @@ pub extern "C" fn __start_rust() -> ! {
     process.set_trap_frame(tf);
 
     kernel.current_process = Some(process);
-    //let p = &mut kernel.current_process;
-    kernel
-        .current_process
-        .as_mut()
-        .expect("program error. failed to run process")
-        .run()
+    kernel.run_into_user()
 }
 
 #[panic_handler]
