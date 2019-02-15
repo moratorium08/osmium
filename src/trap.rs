@@ -1,7 +1,44 @@
+use core::fmt;
 use stvec;
 
 extern "C" {
     static trap_entry: u8;
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Trap {
+    Exception(Exception),
+    Interruption(Interruption),
+}
+
+impl fmt::Display for Trap {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+impl Trap {
+    pub fn from_u32(x: u32) -> Option<Trap> {
+        if (x >> 31) == 1 {
+            let int = Interruption::from_u32(x & !(1 << 31));
+            match int {
+                Some(int) => Some(Trap::Interruption(int)),
+                None => None,
+            }
+        } else {
+            let exc = Exception::from_u32(x & !(1 << 31));
+            match exc {
+                Some(int) => Some(Trap::Exception(int)),
+                None => None,
+            }
+        }
+    }
+    pub fn to_str(self) -> &'static str {
+        match self {
+            Trap::Exception(e) => e.to_str(),
+            Trap::Interruption(i) => i.to_str(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -17,31 +54,50 @@ pub enum Interruption {
     MachineExternal,
 }
 
+impl fmt::Display for Interruption {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
 impl Interruption {
+    pub fn to_str(self) -> &'static str {
+        match self {
+            Interruption::UserSoftware => "User Software Interruption",
+            Interruption::SupervisorSoftware => "Supervisor Software Interruption",
+            Interruption::MachineSoftware => "Machine Software Interruption",
+            Interruption::UserTimer => "User Timer Interruption",
+            Interruption::SupervisorTimer => "Supervisor Timer Interruption",
+            Interruption::MachineTimer => "Machine Timer Interruption",
+            Interruption::UserExternal => "User External",
+            Interruption::SupervisorExternal => "Supvervisor External",
+            Interruption::MachineExternal => "Machine External",
+        }
+    }
     pub fn to_u32(self) -> u32 {
         match self {
-            Interruption::UserSoftware => 0,
-            Interruption::SupervisorSoftware => 1,
-            Interruption::MachineSoftware => 3,
-            Interruption::UserTimer => 4,
-            Interruption::SupervisorTimer => 5,
-            Interruption::MachineTimer => 7,
-            Interruption::UserExternal => 8,
-            Interruption::SupervisorExternal => 9,
-            Interruption::MachineExternal => 11,
+            Interruption::UserSoftware => 1 << 0,
+            Interruption::SupervisorSoftware => 1 << 1,
+            Interruption::MachineSoftware => 1 << 3,
+            Interruption::UserTimer => 1 << 4,
+            Interruption::SupervisorTimer => 1 << 5,
+            Interruption::MachineTimer => 1 << 7,
+            Interruption::UserExternal => 1 << 8,
+            Interruption::SupervisorExternal => 1 << 9,
+            Interruption::MachineExternal => 1 << 11,
         }
     }
     pub fn from_u32(x: u32) -> Option<Interruption> {
         match x {
-            0 => Some(Interruption::UserSoftware),
-            1 => Some(Interruption::SupervisorSoftware),
-            3 => Some(Interruption::MachineSoftware),
-            4 => Some(Interruption::UserTimer),
-            5 => Some(Interruption::SupervisorTimer),
-            7 => Some(Interruption::MachineTimer),
-            8 => Some(Interruption::UserExternal),
-            9 => Some(Interruption::SupervisorExternal),
-            11 => Some(Interruption::MachineExternal),
+            0b1 => Some(Interruption::UserSoftware),
+            0b10 => Some(Interruption::SupervisorSoftware),
+            0b1000 => Some(Interruption::MachineSoftware),
+            0b10000 => Some(Interruption::UserTimer),
+            0b100000 => Some(Interruption::SupervisorTimer),
+            0b10000000 => Some(Interruption::MachineTimer),
+            0b100000000 => Some(Interruption::UserExternal),
+            0b1000000000 => Some(Interruption::SupervisorExternal),
+            0b100000000000 => Some(Interruption::MachineExternal),
             _ => None,
         }
     }
@@ -65,7 +121,31 @@ pub enum Exception {
     StorePageFault,
 }
 
+impl fmt::Display for Exception {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
 impl Exception {
+    pub fn to_str(self) -> &'static str {
+        match self {
+            Exception::InstructionAddressMisaligned => "Instruction Address Misaligned Exception",
+            Exception::InstructionAccessFault => "Instruction Access Fault Exception",
+            Exception::IllegalInstruction => "Illegal Instruction Exception",
+            Exception::Breakpoint => "Breakpoint Exception",
+            Exception::LoadAccessMisaligned => "Load Access Misaligned Exception",
+            Exception::LoadAccessFault => "Load Access Fault Exception",
+            Exception::StoreAddressMisalinged => "Store Address Misaligned Exception",
+            Exception::StoreAccessFault => "Store Access Fault Exception",
+            Exception::EnvironmentCallU => "Environment Call from User Mode Exception",
+            Exception::EnvironmentCallS => "Environment Call from Supervisor Mode Exception",
+            Exception::EnvironmentCallM => "Environment Call from Machine Mode Exception",
+            Exception::InstructionPageFault => "Instruction Page Fault Exception",
+            Exception::LoadPageFault => "Load Page Fault Exception",
+            Exception::StorePageFault => "Store Page Fault Exception",
+        }
+    }
     pub fn to_u32(self) -> u32 {
         match self {
             Exception::InstructionAddressMisaligned => 0,
@@ -86,20 +166,20 @@ impl Exception {
     }
     pub fn from_u32(x: u32) -> Option<Exception> {
         match x {
-            0 => Some(Exception::InstructionAddressMisaligned),
-            1 => Some(Exception::InstructionAccessFault),
-            2 => Some(Exception::IllegalInstruction),
-            3 => Some(Exception::Breakpoint),
-            4 => Some(Exception::LoadAccessMisaligned),
-            5 => Some(Exception::LoadAccessFault),
-            6 => Some(Exception::StoreAddressMisalinged),
-            7 => Some(Exception::StoreAccessFault),
-            8 => Some(Exception::EnvironmentCallU),
-            9 => Some(Exception::EnvironmentCallS),
-            11 => Some(Exception::EnvironmentCallM),
-            12 => Some(Exception::InstructionPageFault),
-            13 => Some(Exception::LoadPageFault),
-            15 => Some(Exception::StorePageFault),
+            0b1 => Some(Exception::InstructionAddressMisaligned),
+            0b10 => Some(Exception::InstructionAccessFault),
+            0b100 => Some(Exception::IllegalInstruction),
+            0b1000 => Some(Exception::Breakpoint),
+            0b10000 => Some(Exception::LoadAccessMisaligned),
+            0b100000 => Some(Exception::LoadAccessFault),
+            0b1000000 => Some(Exception::StoreAddressMisalinged),
+            0b10000000 => Some(Exception::StoreAccessFault),
+            0b100000000 => Some(Exception::EnvironmentCallU),
+            0b1000000000 => Some(Exception::EnvironmentCallS),
+            0b100000000000 => Some(Exception::EnvironmentCallM),
+            0b1000000000000 => Some(Exception::InstructionPageFault),
+            0b10000000000000 => Some(Exception::LoadPageFault),
+            0b1000000000000000 => Some(Exception::StorePageFault),
             _ => None,
         }
     }
@@ -149,6 +229,9 @@ pub fn trap_init() {
 pub fn trap(tf: TrapFrame) -> ! {
     println!("entering trap");
     println!("{:?}", &tf);
+
+    let trap = Trap::from_u32(tf.regs.int_regs[2]).expect("failed to parse trap cause");
+    println!("caught trap: {}", trap);
 
     panic!("failed to run process");
 }
