@@ -1,5 +1,7 @@
 use core::fmt;
+use statics;
 use stvec;
+use syscall;
 
 extern "C" {
     static trap_entry: u8;
@@ -164,6 +166,7 @@ impl Exception {
             Exception::StorePageFault => 15,
         }
     }
+    // use bitflags
     pub fn from_u32(x: u32) -> Option<Exception> {
         match x {
             0b1 => Some(Exception::InstructionAddressMisaligned),
@@ -199,6 +202,30 @@ impl Register {
             float_regs: [0; 32],
         }
     }
+    pub fn a0(&self) -> u32 {
+        self.int_regs[10]
+    }
+    pub fn a1(&self) -> u32 {
+        self.int_regs[11]
+    }
+    pub fn a2(&self) -> u32 {
+        self.int_regs[12]
+    }
+    pub fn a3(&self) -> u32 {
+        self.int_regs[13]
+    }
+    pub fn a4(&self) -> u32 {
+        self.int_regs[14]
+    }
+    pub fn a5(&self) -> u32 {
+        self.int_regs[15]
+    }
+    pub fn a6(&self) -> u32 {
+        self.int_regs[16]
+    }
+    pub fn set_syscall_result(&mut self, x: u32) {
+        self.int_regs[10] = x;
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -226,14 +253,76 @@ pub fn trap_init() {
     stvec::STVEC::set_trap_base(trap_entry_addr);
 }
 
-pub fn trap(tf: TrapFrame) -> ! {
+pub fn syscall_dispatch(
+    sc: syscall::Syscall,
+    tf: &mut TrapFrame,
+) -> Result<(), syscall::SyscallError> {
+    let result = match sc {
+        syscall::Syscall::UartRead { buf, size } => syscall::uart_read(buf, size)?,
+        syscall::Syscall::UartWrite { buf, size } => syscall::uart_write(buf, size)?,
+    };
+    tf.regs.set_syscall_result(result);
+    Ok(())
+}
+
+pub fn handle_envcall(mut tf: TrapFrame) -> ! {
+    let e = match syscall::Syscall::from_trap_frame(&tf) {
+        Ok(syscall) => syscall_dispatch(syscall, &mut tf),
+        Err(e) => {
+            println!("failed to run env call: {}", e);
+            Err(e)
+        }
+    };
+    match e {
+        Ok(()) => {
+            let kernel = unsafe { statics::get_kernel() };
+            print!("pc {:x} -> ", tf.pc);
+            kernel
+                .current_process
+                .as_mut()
+                .expect("program error. failed to get process")
+                .trap_frame = tf;
+            println!(
+                "{:x}",
+                kernel.current_process.as_mut().expect("").trap_frame.pc
+            );
+            kernel
+                .current_process
+                .as_mut()
+                .expect("program error. failed to run process")
+                .run()
+        }
+        Err(e) => {
+            // handle kill process
+            panic!("failed to do syscall: {}", e)
+        }
+    }
+}
+
+fn exception_handler(exc: Exception, tf: TrapFrame) -> ! {
+    match exc {
+        Exception::EnvironmentCallU => handle_envcall(tf),
+        _ => panic!("{} is not supported", exc.to_str()),
+    }
+}
+
+fn interruption_handler(itrpt: Interruption, tf: TrapFrame) -> ! {
+    match itrpt {
+        _ => panic!("{} is not supported", itrpt.to_str()),
+    }
+}
+
+fn trap(tf: TrapFrame) -> ! {
     println!("entering trap");
     println!("{:?}", &tf);
 
     let trap = Trap::from_u32(tf.regs.int_regs[2]).expect("failed to parse trap cause");
     println!("caught trap: {}", trap);
 
-    panic!("failed to run process");
+    match trap {
+        Trap::Exception(e) => exception_handler(e, tf),
+        Trap::Interruption(i) => interruption_handler(i, tf),
+    }
 }
 
 // 最初にepcをバックアップして、例外を無効にしてから処理

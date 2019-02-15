@@ -56,7 +56,7 @@ pub struct Process<'a> {
     index: usize,
     proc_type: Type,
     status: Status,
-    trap_frame: trap::TrapFrame,
+    pub trap_frame: trap::TrapFrame,
 }
 
 impl<'a> Process<'a> {

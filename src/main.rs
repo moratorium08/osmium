@@ -18,6 +18,7 @@ pub mod memutil;
 pub mod paging;
 pub mod proc;
 pub mod statics;
+pub mod syscall;
 pub mod trap;
 pub mod utils;
 
@@ -238,11 +239,12 @@ pub extern "C" fn __start_rust() -> ! {
     process.set_trap_frame(tf);
 
     kernel.current_process = Some(process);
-    let p = &mut kernel.current_process;
-    match p {
-        Some(ref mut p) => p.run(),
-        None => panic!("fail to run process"),
-    };
+    //let p = &mut kernel.current_process;
+    kernel
+        .current_process
+        .as_mut()
+        .expect("program error. failed to run process")
+        .run()
 }
 
 #[panic_handler]
