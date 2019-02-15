@@ -1,10 +1,16 @@
 #![no_std]
 #![no_main]
-#![no_std]
+#![feature(asm)]
+extern crate misc;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    loop {}
+    let mut buf = [0u8; 16];
+    loop {
+        let len = buf.len();
+        misc::sys_read(&mut buf, len);
+        misc::sys_write(&buf, len);
+    }
 }
 
 use core::panic::PanicInfo;
