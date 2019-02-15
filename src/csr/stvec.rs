@@ -85,3 +85,16 @@ impl CSRWrite for STVEC {
         (self.base << 2) | mode
     }
 }
+
+impl STVEC {
+    pub fn set_mode(mode: Mode) {
+        let mut csr = STVEC::read();
+        csr.mode = mode;
+        csr.commit();
+    }
+    pub fn set_trap_base(trap: u32) {
+        let mut csr = STVEC::read();
+        csr.base = trap;
+        csr.commit();
+    }
+}

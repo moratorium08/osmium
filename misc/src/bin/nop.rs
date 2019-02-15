@@ -1,8 +1,12 @@
 #![no_std]
 #![no_main]
+#![feature(asm)]
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    unsafe {
+        asm!("li a0, 10\n ecall\n");
+    }
     loop {}
 }
 

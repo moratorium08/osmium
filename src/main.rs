@@ -23,6 +23,7 @@ pub mod utils;
 
 use core::panic::PanicInfo;
 use csr::satp;
+use csr::stvec;
 
 extern "C" {
     static kernel_end: u8;
@@ -30,6 +31,7 @@ extern "C" {
     static mut temporary_pgdir_ptr: u32;
     static mut kernel_frames_ptr: u32;
     static mut stack_stop: u8;
+    static trap_entry: u8;
 }
 
 const IO_REGION: u64 = 0x80000000;
@@ -160,11 +162,17 @@ pub extern "C" fn __start_rust() -> ! {
         allocator,
         process_manager,
     };
-    println!("set kernel");
+    println!("setting kernel");
 
     unsafe {
         statics::set_kernel(kernel);
     }
+
+    println!("setting stvec");
+    stvec::STVEC::set_mode(stvec::Mode::Direct);
+    let trap_entry_addr = unsafe { (&trap_entry as *const u8) } as u32;
+    println!("trap entry: {:x}", trap_entry_addr);
+    stvec::STVEC::set_trap_base(trap_entry_addr);
 
     let process: &mut proc::Process<'static>;
     {

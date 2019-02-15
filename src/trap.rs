@@ -190,7 +190,9 @@ trap_entry:
 "#
 );
 
+#[no_mangle]
 extern "C" fn trap_entry_rust(regs: *const Register) -> ! {
+    panic!("hello trap");
     // TODO: prohibit interrupt
     let sp;
     let pc;
