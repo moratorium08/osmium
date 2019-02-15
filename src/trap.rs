@@ -1,5 +1,4 @@
-use csr::sepc;
-use csr::CSRWrite;
+use memlayout;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Interruption {
@@ -102,6 +101,7 @@ impl Exception {
     }
 }
 
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Register {
     pub int_regs: [u32; 32],
@@ -117,6 +117,7 @@ impl Register {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct TrapFrame {
     pub pc: u32,
     pub sp: u32,
@@ -133,10 +134,82 @@ impl TrapFrame {
     }
 }
 
+pub fn trap_init() {}
+
+pub fn trap(tf: TrapFrame) -> ! {
+    unimplemented!()
+}
+
+// 最初にepcをバックアップして、例外を無効にしてから処理
+global_asm!(
+    r#"
+.global trap_entry
+trap_entry:
+    csrrw x0, sscratch, sp
+    lui     sp, %hi(INTERRUPT_STACK_BOTTOMN)
+    addi    sp, sp, %lo(INTERRUPT_STACK_BOTTOMN)
+    addi sp, sp, -128
+    sw x0, 0(sp)
+    sw x1, 4(sp)
+    
+    csrrs x1, scause, x0 
+    sw x1, 8(sp)
+
+    sw x3, 12(sp)
+    sw x4, 16(sp)
+    sw x5, 20(sp)
+    sw x6, 24(sp)
+    sw x7, 28(sp)
+    sw x8, 32(sp)
+    sw x9, 36(sp)
+    sw x10, 40(sp)
+    sw x11, 44(sp)
+    sw x12, 48(sp)
+    sw x13, 52(sp)
+    sw x14, 56(sp)
+    sw x15, 60(sp)
+    sw x16, 64(sp)
+    sw x17, 68(sp)
+    sw x18, 72(sp)
+    sw x19, 76(sp)
+    sw x20, 80(sp)
+    sw x21, 84(sp)
+    sw x22, 88(sp)
+    sw x23, 92(sp)
+    sw x24, 96(sp)
+    sw x25, 100(sp)
+    sw x26, 104(sp)
+    sw x27, 108(sp)
+    sw x28, 112(sp)
+    sw x29, 116(sp)
+    sw x30, 120(sp)
+    sw x31, 124(sp)
+
+    mv a0, sp
+    call trap_entry_rust
+"#
+);
+
+extern "C" fn trap_entry_rust(regs: *const Register) -> ! {
+    // TODO: prohibit interrupt
+    let sp;
+    let pc;
+    unsafe {
+        asm!(
+            "
+            csrrs $0, sscratch, x0\n
+            csrrs $1, sepc, x0\n
+            "
+            : "=&r"(sp), "=&r"(pc)
+        );
+    }
+    let mut tf = TrapFrame::new(pc, sp);
+    tf.regs = unsafe { *regs };
+    trap(tf)
+}
+
 pub unsafe fn pop_trap_frame(tf: &TrapFrame) -> ! {
     // TODO: prohibit interrupt
-    // mv 'real' sp to scratch
-    // sepc::SEPC::write_csr(tf.pc);
 
     asm!(
         "

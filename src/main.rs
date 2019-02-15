@@ -17,6 +17,7 @@ pub mod memlayout;
 pub mod memutil;
 pub mod paging;
 pub mod proc;
+pub mod statics;
 pub mod trap;
 pub mod utils;
 
@@ -41,6 +42,7 @@ struct BootAlloc<'a> {
     pub procs: &'a mut [proc::Process<'a>; proc::N_PROCS],
     pub proc_pages: &'a mut [paging::PageTable; proc::N_PROCS],
     pub proc_tmp_pages: &'a mut [paging::PageTable; proc::N_PROCS],
+    pub kernel: &'a mut statics::Kernel<'a>,
 }
 
 // must call before memory management in order to reserve envs memory.
@@ -56,7 +58,10 @@ fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
 
     let procs = unsafe { &mut *(end as *mut [proc::Process; proc::N_PROCS]) };
     let end = end + (proc::N_PROCS as u64) * (proc::Process::size_of() as u64);
+    let end = utils::round_up(end, paging::PGSIZE as u64);
 
+    let kernel = unsafe { &mut *(end as *mut statics::Kernel) };
+    let end = end + (statics::Kernel::size_of() as u64);
     let end = utils::round_up(end, paging::PGSIZE as u64);
 
     (
@@ -65,43 +70,14 @@ fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
             procs,
             proc_pages,
             proc_tmp_pages,
+            kernel,
         },
     )
-}
-
-struct Kernel<'a> {
-    kernel_pgdir: &'a mut paging::PageTable,
-    mapper: paging::Map<'a>,
-    allocator: paging::Allocator<'a>,
 }
 
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
     //println!("hello\n\n");
-
-    /*println!("enter two uint8_t values a, b please");
-    let a = (uart::read_byte() - 0x30) as u32;
-    let _ = uart::read_byte();
-    let b = (uart::read_byte() - 0x30) as u32;
-    let _ = uart::read_byte();
-    println!("{} / {} = {}", a, b, a / b);
-    println!("{} % {} = {}", a, b, a % b);
-    println!("enter two int8_t values a, b please");
-    let mut a = a as i32;
-    let mut b = b as i32;
-
-    println!("{} / {} = {}", a, b, a / b);
-    println!("{} % {} = {}", a, b, a % b);
-    a = -1i32 * a;
-    println!("{} / {} = {}", a, b, a / b);
-    println!("{} % {} = {}", a, b, a % b);
-    b = -1i32 * b;
-    println!("{} / {} = {}", a, b, a / b);
-    println!("{} % {} = {}", a, b, a % b);
-    a = -1i32 * a;
-    println!("{} / {} = {}", a, b, a / b);
-    println!("{} % {} = {}", a, b, a % b);
-    */
 
     // setup kernel page table
     let kern_pgdir =
@@ -119,6 +95,7 @@ pub extern "C" fn __start_rust() -> ! {
     println!("mapper created");
 
     let (kernel_memory_end, allocated) = boot_alloc();
+    statics::set_kernel_ptr(allocated.kernel);
     let is_used = |addr| {
         if (addr as u64) < kernel_memory_end + (paging::PGSIZE as u64) {
             return true;
@@ -175,31 +152,52 @@ pub extern "C" fn __start_rust() -> ! {
         allocated.proc_pages,
         allocated.proc_tmp_pages,
     );
-    let process = unsafe {
-        &mut *(process_manager
-            .alloc()
-            .expect("failed to alloc process(program error)"))
+    // finished initializing a kernel
+
+    let kernel = statics::Kernel {
+        /*kern_pgdir,*/
+        mapper,
+        allocator,
+        process_manager,
     };
-    process.create(&mut allocator, &mut mapper);
+    println!("set kernel");
 
-    // use proc's page table
-    satp::SATP::set_ppn(process.ppn());
+    unsafe {
+        statics::set_kernel(kernel);
+    }
 
-    let nop_file = match files::search("nop") {
-        Some(file) => file,
-        None => panic!("failed to find nop"),
-    };
+    let process: &mut proc::Process<'static>;
+    {
+        let kernel = unsafe { statics::get_kernel() };
 
-    println!("nop_file bytes: {}", nop_file.bytes as *const u8 as usize);
-    let nop_elf = elf::Elf::new(nop_file.bytes).expect("failed to parse ELF");
+        process = unsafe {
+            &mut *(kernel
+                .process_manager
+                .alloc()
+                .expect("failed to alloc process(program error)"))
+        };
+        process.create(&mut kernel.allocator, &mut kernel.mapper);
+        // use proc's page table
+        satp::SATP::set_ppn(process.ppn());
 
-    match process.load_elf(&nop_elf, &mut allocator) {
-        Ok(()) => (),
-        Err(e) => panic!("failed to load elf: {}", e),
-    };
-    let tf = trap::TrapFrame::new(nop_elf.elf.entry, memlayout::USER_SATCK_BOTTOMN);
-    process.set_trap_frame(tf);
+        let nop_file = match files::search("nop") {
+            Some(file) => file,
+            None => panic!("failed to find nop"),
+        };
+
+        println!("nop_file bytes: {}", nop_file.bytes as *const u8 as usize);
+        let nop_elf = elf::Elf::new(nop_file.bytes).expect("failed to parse ELF");
+
+        match process.load_elf(&nop_elf, &mut kernel.allocator) {
+            Ok(()) => (),
+            Err(e) => panic!("failed to load elf: {}", e),
+        };
+        let tf = trap::TrapFrame::new(nop_elf.elf.entry, memlayout::USER_STACK_BOTTOMN);
+        process.set_trap_frame(tf);
+    }
+
     process.run();
+
     println!("ok");
     loop {}
 }
