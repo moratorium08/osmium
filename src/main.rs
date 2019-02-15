@@ -31,7 +31,7 @@ extern "C" {
     static mut temporary_pgdir_ptr: u32;
     static mut kernel_frames_ptr: u32;
     static mut stack_stop: u8;
-    static trap_entry: u8;
+    static mut interrupt_stack_stop: u8;
 }
 
 const IO_REGION: u64 = 0x80000000;
@@ -122,9 +122,19 @@ pub extern "C" fn __start_rust() -> ! {
     }
     println!("kernel mapping created");
 
+    // stack stop
     if let Err(e) = mapper.boot_map_region(
         paging::VirtAddr::new(unsafe { &stack_stop as *const u8 as u32 }),
         paging::PhysAddr::new(unsafe { &stack_stop as *const u8 as u64 }),
+        paging::PGSIZE,
+        paging::Flag::empty(),
+        &mut allocator,
+    ) {
+        panic!("Failed to map kernel region. Reason: {:?}", e);
+    }
+    if let Err(e) = mapper.boot_map_region(
+        paging::VirtAddr::new(unsafe { &interrupt_stack_stop as *const u8 as u32 }),
+        paging::PhysAddr::new(unsafe { &interrupt_stack_stop as *const u8 as u64 }),
         paging::PGSIZE,
         paging::Flag::empty(),
         &mut allocator,
@@ -148,7 +158,6 @@ pub extern "C" fn __start_rust() -> ! {
 
     println!("kernel space (identity) paging works!");
 
-    println!("Let's create an user process");
     let mut process_manager = proc::ProcessManager::new(
         allocated.procs,
         allocated.proc_pages,
@@ -157,57 +166,50 @@ pub extern "C" fn __start_rust() -> ! {
     // finished initializing a kernel
 
     let kernel = statics::Kernel {
-        /*kern_pgdir,*/
         mapper,
         allocator,
         process_manager,
+        current_process: None,
     };
     println!("setting kernel");
 
     unsafe {
         statics::set_kernel(kernel);
     }
+    trap::trap_init();
 
-    println!("setting stvec");
-    stvec::STVEC::set_mode(stvec::Mode::Direct);
-    let trap_entry_addr = unsafe { (&trap_entry as *const u8) } as u32;
-    println!("trap entry: {:x}", trap_entry_addr);
-    stvec::STVEC::set_trap_base(trap_entry_addr);
+    println!("ok. Finished kernel booting");
+    println!("Let's create an user process");
+    let kernel = unsafe { statics::get_kernel() };
+    let process = unsafe {
+        &mut *(kernel
+            .process_manager
+            .alloc()
+            .expect("failed to alloc process(program error)"))
+    };
+    process.create(&mut kernel.allocator, &mut kernel.mapper);
 
-    let process: &mut proc::Process<'static>;
-    {
-        let kernel = unsafe { statics::get_kernel() };
+    let nop_file = match files::search("nop") {
+        Some(file) => file,
+        None => panic!("failed to find nop"),
+    };
 
-        process = unsafe {
-            &mut *(kernel
-                .process_manager
-                .alloc()
-                .expect("failed to alloc process(program error)"))
-        };
-        process.create(&mut kernel.allocator, &mut kernel.mapper);
-        // use proc's page table
-        satp::SATP::set_ppn(process.ppn());
+    println!("nop_file bytes: {}", nop_file.bytes as *const u8 as usize);
+    let nop_elf = elf::Elf::new(nop_file.bytes).expect("failed to parse ELF");
 
-        let nop_file = match files::search("nop") {
-            Some(file) => file,
-            None => panic!("failed to find nop"),
-        };
+    match process.load_elf(&nop_elf, &mut kernel.allocator) {
+        Ok(()) => (),
+        Err(e) => panic!("failed to load elf: {}", e),
+    };
+    let tf = trap::TrapFrame::new(nop_elf.elf.entry, memlayout::USER_STACK_BOTTOMN);
+    process.set_trap_frame(tf);
 
-        println!("nop_file bytes: {}", nop_file.bytes as *const u8 as usize);
-        let nop_elf = elf::Elf::new(nop_file.bytes).expect("failed to parse ELF");
-
-        match process.load_elf(&nop_elf, &mut kernel.allocator) {
-            Ok(()) => (),
-            Err(e) => panic!("failed to load elf: {}", e),
-        };
-        let tf = trap::TrapFrame::new(nop_elf.elf.entry, memlayout::USER_STACK_BOTTOMN);
-        process.set_trap_frame(tf);
-    }
-
-    process.run();
-
-    println!("ok");
-    loop {}
+    kernel.current_process = Some(process);
+    let p = &mut kernel.current_process;
+    match p {
+        Some(ref mut p) => p.run(),
+        None => panic!("fail to run process"),
+    };
 }
 
 #[panic_handler]

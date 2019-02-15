@@ -166,6 +166,7 @@ impl<'a> Process<'a> {
 
     pub fn run(&mut self) -> ! {
         satp::SATP::set_ppn(self.ppn());
+        self.status = Status::Running;
         unsafe {
             trap::pop_trap_frame(&self.trap_frame);
         }

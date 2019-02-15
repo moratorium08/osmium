@@ -30,8 +30,16 @@ kernel_frames_ptr:
 stack_stop:
     .skip 4096
 stack:
-    .skip 8097152
+    .skip 4096000
 stack_end:
+
+.global interrupt_stack_stop
+interrupt_stack_stop:
+    .skip 4096
+interrupt_stack:
+    .skip 4096000
+.global interrupt_stack_end
+interrupt_stack_end:
 
 # followings are not aligned data
 .option norvc

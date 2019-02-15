@@ -1,4 +1,8 @@
-use memlayout;
+use stvec;
+
+extern "C" {
+    static trap_entry: u8;
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum Interruption {
@@ -101,7 +105,7 @@ impl Exception {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Register {
     pub int_regs: [u32; 32],
@@ -117,7 +121,7 @@ impl Register {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct TrapFrame {
     pub pc: u32,
     pub sp: u32,
@@ -134,10 +138,19 @@ impl TrapFrame {
     }
 }
 
-pub fn trap_init() {}
+pub fn trap_init() {
+    println!("setting stvec");
+    stvec::STVEC::set_mode(stvec::Mode::Direct);
+    let trap_entry_addr = unsafe { (&trap_entry as *const u8) } as u32;
+    println!("trap entry: {:x}", trap_entry_addr);
+    stvec::STVEC::set_trap_base(trap_entry_addr);
+}
 
 pub fn trap(tf: TrapFrame) -> ! {
-    unimplemented!()
+    println!("entering trap");
+    println!("{:?}", &tf);
+
+    panic!("failed to run process");
 }
 
 // 最初にepcをバックアップして、例外を無効にしてから処理
@@ -146,8 +159,8 @@ global_asm!(
 .global trap_entry
 trap_entry:
     csrrw x0, sscratch, sp
-    lui     sp, %hi(INTERRUPT_STACK_BOTTOMN)
-    addi    sp, sp, %lo(INTERRUPT_STACK_BOTTOMN)
+    lui     sp, %hi(interrupt_stack_end)
+    addi    sp, sp, %lo(interrupt_stack_end)
     addi sp, sp, -128
     sw x0, 0(sp)
     sw x1, 4(sp)
@@ -192,7 +205,6 @@ trap_entry:
 
 #[no_mangle]
 extern "C" fn trap_entry_rust(regs: *const Register) -> ! {
-    panic!("hello trap");
     // TODO: prohibit interrupt
     let sp;
     let pc;
