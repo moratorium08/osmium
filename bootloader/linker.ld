@@ -4,7 +4,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-    . = 0x00004000;
+    . = 0x00000000;
 
     .reset.boot :
     {
@@ -29,17 +29,6 @@ SECTIONS
     .bss :
     {
         *(.bss bss.*)
-    }
-
-    .programs :
-    {
-        *(.programs programs.*)
-    }
-
-    . = ALIGN( 0x1000 );
-    .kernel_aligned :
-    {
-        *(.kernel_aligned kernel_aligned.*)
     }
 
     PROVIDE(kernel_end = .);

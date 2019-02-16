@@ -77,40 +77,8 @@ fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
         },
     )
 }
-
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
-    /*
-    unsafe {
-        asm!(
-            "
-        li a0, 42\n
-        csrrs x0, stvec, a0\n
-        csrrs a1, stvec, x0\n
-        csrrc a2, stvec, a0\n
-        csrrs a3, stvec, x0\n
-
-        li x14, 42\n
-        csrrs x0,  sscratch,  x14\n
-        csrrs x15, sscratch, x0\n
-        csrrc x16, sscratch, x14\n
-        csrrs x17, sscratch, x0\n
-
-        li x18, 24\n
-        csrrs x0,  sepc, x18\n
-        csrrs x19, sepc, x0\n
-        csrrc x20, sepc, x18\n
-        csrrs x21, sepc, x0\n
-
-        csrrs x22, scause, x0\n
-    "
-        );
-    }
-    satp::SATP::set_ppn(0xdeadbeef >> paging::LOG_PGSIZE);
-    satp::SATP::enable_paging();
-    panic!("bye.");
-    */
-
     println!("Hello Osmium\n\n");
     // setup kernel page table
     let kern_pgdir =

@@ -2,3 +2,5 @@
 **/*.rs.bk
 /tools
 misc/bin/
+bootloader/target
+misc/target
