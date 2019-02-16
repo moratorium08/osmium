@@ -181,8 +181,7 @@ impl Frame {
 
     pub fn to_ppn(&self) -> u32 {
         /* 34 -> 32(22) bits */
-        //(self.addr.floor_pgsize().0 >> 2) as u32
-        self.addr.floor_pgsize().0 as u32
+        (self.addr.floor_pgsize().0 >> 2) as u32
     }
 
     pub fn phys_addr(&self) -> PhysAddr {
@@ -258,11 +257,11 @@ impl PageTableEntry {
         self.flag().contains(Flag::VALID)
     }
     fn set_frame(&mut self, frame: Frame, flag: Flag) {
-        // println!("{:x} | {:x} = {:x}", frame.to_ppn(), flag.bits(), .to_ppn() | flag.bits());
+        //println!("{:x} | {:x} = {:x}", frame.to_ppn(), flag.bits(), frame.to_ppn() | flag.bits());
         self.entry = frame.to_ppn() | flag.bits()
     }
     fn phys_addr(&self) -> PhysAddr {
-        PhysAddr((self.entry & 0xfffff000) as u64)
+        PhysAddr(((self.entry & 0xfffffc00) as u64) << 2)
     }
 }
 

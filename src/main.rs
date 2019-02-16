@@ -124,7 +124,6 @@ fn setup_boot_time_trap() {
 pub extern "C" fn __start_rust() -> ! {
     setup_boot_time_trap();
 
-    println!("Hello Osmium\n\n");
     // setup kernel page table
     let kern_pgdir =
         unsafe { &mut *((&mut kernel_pgdir_ptr as *mut u32) as *mut paging::PageTable) };
