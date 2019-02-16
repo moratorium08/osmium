@@ -4,7 +4,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-    . = 0x00004000;
+    . = 0x00010000;
 
     .reset.boot :
     {

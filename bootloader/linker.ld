@@ -30,4 +30,9 @@ SECTIONS
     {
         *(.bss bss.*)
     }
+
+    .stack :
+    {
+        *(.stack stack.*)
+    }
 }

@@ -8,6 +8,8 @@ _start:
     addi    sp, sp, %lo(stack_end)
     j       __start_rust
 
+.option norvc
+.section .stack, "ax",@progbits
 stack:
     .skip 4096
 stack_end:
