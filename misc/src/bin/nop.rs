@@ -1,17 +1,22 @@
 #![no_std]
 #![no_main]
 #![feature(asm)]
+
+#[macro_use]
 extern crate misc;
+
+use misc::syscall;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    misc::sys_exit(0)
+    syscall::sys_exit(0)
 }
 
 use core::panic::PanicInfo;
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {
+    println!("{}", info);
     loop {}
 }
 

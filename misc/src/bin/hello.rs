@@ -1,13 +1,13 @@
 #![no_std]
 #![no_main]
 #![feature(asm)]
+
+#[macro_use]
 extern crate misc;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    let buf = "Hello Syscall";
-
-    misc::sys_write(buf.as_bytes(), buf.len());
+    println!("{}", "Hello Syscall");
 
     loop {}
 }
@@ -16,6 +16,7 @@ use core::panic::PanicInfo;
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {
+    println!("{}", info);
     loop {}
 }
 
