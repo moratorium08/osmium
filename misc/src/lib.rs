@@ -2,6 +2,19 @@
 #![feature(asm)]
 #![no_std]
 
+fn syscall_0(num: u32) -> u32 {
+    let result: u32;
+    unsafe {
+        asm!("
+            ecall
+        "
+        : "={x10}"(result)
+        : "{x10}"(num)
+        );
+    }
+    result
+}
+
 fn syscall_1(num: u32, a: u32) -> u32 {
     let result: u32;
     unsafe {
@@ -39,4 +52,18 @@ pub fn sys_read(buf: &mut [u8], size: usize) -> u32{
 pub fn sys_exit(status: u32) -> ! { 
     syscall_1(2, status);
     loop {} // here does not reach
+}
+
+pub fn sys_get_proc_id() -> u32 { 
+    syscall_0(4)
+}
+
+pub fn sys_yield() -> u32 { 
+    syscall_0(5)
+}
+
+
+    pub fn puts(x: &str) {
+    sys_write(x.as_bytes(), x.len());
+    sys_write(b"\n", 1);
 }

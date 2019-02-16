@@ -48,6 +48,12 @@ impl fmt::Display for ProcessError {
 #[derive(Copy, Clone)]
 pub struct Id(pub u32);
 
+impl Id {
+    pub fn to_u32(self) -> u32 {
+        self.0
+    }
+}
+
 #[repr(C)]
 pub struct Process<'a> {
     pub mapper: paging::Map<'a>,

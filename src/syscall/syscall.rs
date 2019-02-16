@@ -9,11 +9,14 @@ pub enum Syscall {
     UartWrite { buf: u32, size: u32 },
     UartRead { buf: u32, size: u32 },
     Exit { status: u32 },
+    GetProcId,
+    Yield,
 }
 
 #[derive(Debug, Copy, Clone)]
 pub enum SyscallError {
     InvalidSyscallNumber,
+    InternalError,
 }
 
 impl fmt::Display for SyscallError {
@@ -44,6 +47,8 @@ impl Syscall {
             number::SYS_EXIT => Ok(Syscall::Exit {
                 status: tf.regs.a1(),
             }),
+            number::SYS_GET_PROC_ID => Ok(Syscall::GetProcId),
+            number::SYS_YIELD => Ok(Syscall::Yield),
             _ => Err(SyscallError::InvalidSyscallNumber),
         }
     }
@@ -76,12 +81,24 @@ pub fn exit(status: u32, kernel: &mut kernel::Kernel) -> Result<u32, SyscallErro
     Ok(0)
 }
 
-/*pub fn mmap(va: u32, size: u32)*/
+pub fn get_proc_id(k: &kernel::Kernel) -> Result<u32, SyscallError> {
+    match k.current_process {
+        Some(ref p) => Ok(p.id.to_u32()),
+        None => Err(SyscallError::InternalError),
+    }
+}
+
+pub fn yield_process(k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
+    k.current_process = None;
+    Ok(0)
+}
 
 pub fn syscall_dispatch(sc: Syscall, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
     match sc {
         Syscall::UartRead { buf, size } => uart_read(buf, size),
         Syscall::UartWrite { buf, size } => uart_write(buf, size),
         Syscall::Exit { status } => exit(status, k),
+        Syscall::GetProcId => get_proc_id(k),
+        Syscall::Yield => yield_process(k),
     }
 }

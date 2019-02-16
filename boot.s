@@ -46,7 +46,7 @@ interrupt_stack_end:
 .section .programs, "ax",@progbits
 .global nop_start
 nop_start:
-    .incbin "misc/bin/nop"
+    .incbin "misc/bin/syscaller"
 .global nop_end
 nop_end:
 
