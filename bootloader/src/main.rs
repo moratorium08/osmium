@@ -41,6 +41,16 @@ pub extern "C" fn __start_rust() -> ! {
     }
     unsafe {
         asm!("
+            lui a0, %hi(0x80000004)
+            addi a0, a0, %lo(0x80000004)
+
+            addi a1, x0, 111
+            sw a1, 0(a0)
+            addi a1, x0, 107
+            sw a1, 0(a0)
+            addi a1, x0, 10
+            sw a1, 0(a0)
+
             lui a0, %hi(KERN_START)
             addi a0, a0, %lo(KERN_START)
             lw a0, 0(a0)
