@@ -1,5 +1,6 @@
 use super::number;
 use crate::kernel;
+use crate::proc;
 use crate::trap;
 use crate::uart;
 use core::fmt;
@@ -11,12 +12,15 @@ pub enum Syscall {
     Exit { status: u32 },
     GetProcId,
     Yield,
+    Fork,
 }
 
 #[derive(Debug, Copy, Clone)]
 pub enum SyscallError {
     InvalidSyscallNumber,
     InternalError,
+    TooManyProcess,
+    NoMemorySpace,
 }
 
 impl fmt::Display for SyscallError {
@@ -49,6 +53,7 @@ impl Syscall {
             }),
             number::SYS_GET_PROC_ID => Ok(Syscall::GetProcId),
             number::SYS_YIELD => Ok(Syscall::Yield),
+            number::SYS_FORK => Ok(Syscall::Fork),
             _ => Err(SyscallError::InvalidSyscallNumber),
         }
     }
@@ -93,12 +98,54 @@ pub fn yield_process(k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
     Ok(0)
 }
 
-pub fn syscall_dispatch(sc: Syscall, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
+pub fn fork(k: &mut kernel::Kernel, tf: &trap::TrapFrame) -> Result<u32, SyscallError> {
+    // create new process
+    let process: &mut proc::Process;
+
+    match unsafe { k.process_manager.alloc() } {
+        Ok(p) => {
+            process = unsafe { &mut *p };
+        }
+        Err(e) => {
+            return Err(match e {
+                proc::ProcessError::FailedToCreateProcess => SyscallError::TooManyProcess,
+                _ => SyscallError::InternalError,
+            });
+        }
+    };
+    match process.create(&mut k.mapper) {
+        Ok(()) => (),
+        Err(e) => return Err(SyscallError::NoMemorySpace),
+    };
+    // setup CoW and dup page table
+    k.current_process
+        .as_mut()
+        .unwrap()
+        .mapper
+        .create_cow_user_memory(&mut process.mapper, &mut k.allocator);
+
+    // change status
+    process.status = proc::Status::Runnable;
+    // set child's tf. and
+    let mut new_tf = tf.clone();
+    new_tf.regs.set_syscall_result(0);
+    process.trap_frame = new_tf;
+    process.parent_id = k.current_process.as_ref().unwrap().id;
+    // parent's retval is child's proc id
+    Ok(process.id.to_u32())
+}
+
+pub fn syscall_dispatch(
+    sc: Syscall,
+    k: &mut kernel::Kernel,
+    tf: &trap::TrapFrame,
+) -> Result<u32, SyscallError> {
     match sc {
         Syscall::UartRead { buf, size } => uart_read(buf, size),
         Syscall::UartWrite { buf, size } => uart_write(buf, size),
         Syscall::Exit { status } => exit(status, k),
         Syscall::GetProcId => get_proc_id(k),
         Syscall::Yield => yield_process(k),
+        Syscall::Fork => fork(k, tf),
     }
 }

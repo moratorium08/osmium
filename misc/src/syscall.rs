@@ -57,3 +57,19 @@ pub fn sys_get_proc_id() -> u32 {
 pub fn sys_yield() -> u32 { 
     syscall_0(5)
 }
+
+pub enum ForkResult {
+    Parent(u32),
+    Child,
+    Fail
+}
+pub fn sys_fork() -> ForkResult { 
+    let r = syscall_0(7) as i32;
+    if r < 0 {
+        ForkResult::Fail
+    } else if (r == 0) {
+        ForkResult::Child
+    } else {
+        ForkResult::Parent(r as u32)
+    }
+}

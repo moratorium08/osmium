@@ -1,5 +1,5 @@
-#![no_std]
 #![no_main]
+#![no_std]
 #![feature(asm)]
 
 #[macro_use]
@@ -17,6 +17,18 @@ pub extern "C" fn _start() -> ! {
     println!("Good job > {}", str::from_utf8(&buf).unwrap());
 
     println!("My proc id is {:x}", syscall::sys_get_proc_id());
+
+    match syscall::sys_fork() {
+        syscall::ForkResult::Parent(id) => {
+            println!("I am a parent of {:x}", id);
+        },
+        syscall::ForkResult::Fail => {
+            println!("fork failed");
+        },
+        syscall::ForkResult::Child => {
+            println!("I'm a child!! ogya-")
+        }
+    }
 
     println!("Yield!");
     syscall::sys_yield();

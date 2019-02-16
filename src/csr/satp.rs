@@ -88,4 +88,8 @@ impl SATP {
         satp.ppn = ppn;
         satp.commit();
     }
+    pub fn read_ppn() -> u32 {
+        let satp = SATP::read();
+        satp.ppn
+    }
 }

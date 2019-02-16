@@ -10,11 +10,11 @@ use utils;
 
 pub const N_PROCS: usize = 1024;
 
-enum Type {
+pub enum Type {
     User,
 }
 
-enum Status {
+pub enum Status {
     Free,
     Running,
     Runnable,
@@ -60,8 +60,8 @@ pub struct Process<'a> {
     pub id: Id,
     pub parent_id: Id,
     index: usize,
-    proc_type: Type,
-    status: Status,
+    pub proc_type: Type,
+    pub status: Status,
     pub trap_frame: trap::TrapFrame,
     pub exit_code: u32,
 }

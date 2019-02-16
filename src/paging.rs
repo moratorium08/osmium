@@ -1,5 +1,7 @@
 use core::fmt;
 use core::ops;
+use csr::satp;
+use csr::{CSRRead, CSRWrite};
 
 pub const LOG_PGSIZE: usize = 12;
 pub const PGSIZE: usize = 1 << LOG_PGSIZE;
@@ -8,6 +10,7 @@ pub const N_FRAMES: usize = MEM_SIZE / PGSIZE;
 pub const PAGE_ENTRY_SIZE: usize = 4;
 pub const N_PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
 pub const TMP_PAGE_ENTRY: usize = N_PAGE_ENTRY - 1;
+pub const USER_MEMORY_BASE: usize = 0x80400000;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct PhysAddr(u64);
@@ -98,6 +101,7 @@ bitflags! {
         const WRITE = 1 << 2;
         const EXEC  = 1 << 3;
         const USER  = 1 << 4;
+        const COW   = 1 << 8;
     }
 }
 
@@ -263,6 +267,9 @@ impl PageTableEntry {
     fn phys_addr(&self) -> PhysAddr {
         PhysAddr(((self.entry & 0xfffffc00) as u64) << 2)
     }
+    fn frame(&self) -> Frame {
+        Frame::from_addr(self.phys_addr())
+    }
 }
 
 #[repr(align(4096))]
@@ -318,8 +325,53 @@ impl<'a> Map<'a> {
         }
     }
 
+    pub fn create_cow_user_memory(
+        &self,
+        map: &mut Map,
+        allocator: &mut Allocator,
+    ) -> Result<(), PageError> {
+        // satp on self's
+        let old_satp = satp::SATP::read();
+        satp::SATP::set_ppn(self.ppn());
+
+        let user_entry = USER_MEMORY_BASE / (PGSIZE * N_PAGE_ENTRY);
+        for i in user_entry..(N_PAGE_ENTRY - 1) {
+            let flag = self.dir[i].flag();
+            if flag.contains(Flag::VALID) {
+                // create page_table
+                let table = Map::get_vpn1_page_table(i);
+                for j in 0..(N_PAGE_ENTRY - 1) {
+                    // a process which forked two times but still contains COW has !VALID & COW
+                    if table[j].flag().contains(Flag::VALID | Flag::COW) {
+                        let new_flag: Flag;
+                        if table[j].flag().contains(Flag::WRITE) {
+                            new_flag = table[j].flag() & (!Flag::WRITE) | Flag::COW;
+                        } else {
+                            new_flag = table[j].flag();
+                        }
+                        let page = Page::from_vpns([j as u32, i as u32]);
+
+                        let old_satp = satp::SATP::read();
+                        satp::SATP::set_ppn(map.ppn());
+                        map.map(page, table[j].frame(), new_flag, allocator)?;
+                        old_satp.commit()
+                    }
+                }
+            }
+        }
+        old_satp.commit();
+        Ok(())
+    }
+
     fn vpn1_page(page: Page) -> Page {
         Page::from_vpns([page.vpn1(), TMP_PAGE_ENTRY as u32])
+    }
+
+    fn get_vpn1_page_table<'b>(index: usize) -> &'b mut PageTable {
+        assert!(index < N_PAGE_ENTRY);
+        let page = Page::from_vpns([index as u32, TMP_PAGE_ENTRY as u32]);
+        let ptr = page.base_addr().as_mut_ptr();
+        unsafe { &mut (*ptr) }
     }
 
     fn create_next_table(

@@ -256,7 +256,7 @@ pub fn trap_init() {
 pub fn handle_envcall(mut tf: TrapFrame) -> ! {
     let kernel = unsafe { kernel::get_kernel() };
     let e = match syscall::Syscall::from_trap_frame(&tf) {
-        Ok(syscall) => syscall::syscall_dispatch(syscall, kernel),
+        Ok(syscall) => syscall::syscall_dispatch(syscall, kernel, &tf),
         Err(e) => {
             println!("failed to run env call: {}", e);
             Err(e)
