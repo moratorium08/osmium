@@ -1,3 +1,3 @@
 #!/bin/sh
 
-tools/bin/emu target/riscv32ima-unknown-none-elf/debug/osmium.bin $@
+cat bin/osmium.bin - | tools/bin/emu bootloader/bin/bootloader.bin $@
