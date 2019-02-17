@@ -246,10 +246,10 @@ impl TrapFrame {
 }
 
 pub fn trap_init() {
-    println!("setting stvec");
+    dprintln!("setting stvec");
     stvec::STVEC::set_mode(stvec::Mode::Direct);
     let trap_entry_addr = unsafe { (&trap_entry as *const u8) } as u32;
-    println!("trap entry: {:x}", trap_entry_addr);
+    dprintln!("trap entry: {:x}", trap_entry_addr);
     stvec::STVEC::set_trap_base(trap_entry_addr);
 }
 
@@ -258,7 +258,7 @@ pub fn handle_envcall(mut tf: TrapFrame) -> ! {
     let e = match syscall::Syscall::from_trap_frame(&tf) {
         Ok(syscall) => syscall::syscall_dispatch(syscall, kernel, &tf),
         Err(e) => {
-            println!("failed to run env call: {}", e);
+            dprintln!("failed to run env call: {}", e);
             Err(e)
         }
     };
@@ -290,11 +290,11 @@ fn interruption_handler(itrpt: Interruption, tf: TrapFrame) -> ! {
 }
 
 fn trap(tf: TrapFrame) -> ! {
-    println!("entering trap");
-    println!("{:?}", &tf);
+    dprintln!("entering trap");
+    dprintln!("{:?}", &tf);
 
     let trap = Trap::from_u32(tf.regs.int_regs[2]).expect("failed to parse trap cause");
-    println!("caught trap: {}", trap);
+    dprintln!("caught trap: {}", trap);
 
     match trap {
         Trap::Exception(e) => exception_handler(e, tf),

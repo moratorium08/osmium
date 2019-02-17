@@ -118,11 +118,19 @@ pub fn fork(k: &mut kernel::Kernel, tf: &trap::TrapFrame) -> Result<u32, Syscall
         Err(e) => return Err(SyscallError::NoMemorySpace),
     };
     // setup CoW and dup page table
-    k.current_process
+    match k
+        .current_process
         .as_mut()
         .unwrap()
         .mapper
-        .create_cow_user_memory(&mut process.mapper, &mut k.allocator);
+        .create_cow_user_memory(&mut process.mapper, &mut k.allocator)
+    {
+        Ok(()) => (),
+        Err(e) => {
+            dprintln!("failed to create cow: {}", e);
+            return Err(SyscallError::InternalError);
+        }
+    }
 
     // change status
     process.status = proc::Status::Runnable;

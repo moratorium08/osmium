@@ -17,14 +17,31 @@ impl<'a> Kernel<'a> {
         unsafe { size_of_val(p) }
     }
 
-    pub fn sched(&mut self) -> ! {
-        unimplemented!()
+    pub fn sched(&mut self) {
+        match self.process_manager.sched() {
+            Some(new_p) => {
+                match self.current_process {
+                    Some(ref mut p) => {
+                        p.status = proc::Status::Runnable;
+                    }
+                    None => (),
+                }
+                self.current_process = Some(unsafe { &mut *new_p });
+            }
+            None => (),
+        }
     }
 
     pub fn run_into_user(&mut self) -> ! {
         match self.current_process {
             Some(ref mut p) => p.run(),
-            None => self.sched(),
+            None => {
+                self.sched();
+                match self.current_process {
+                    Some(ref mut p) => p.run(),
+                    None => panic!("no process is runnable"),
+                }
+            }
         }
     }
 

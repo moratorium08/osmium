@@ -17,7 +17,7 @@ impl<'a> Elf<'a> {
     pub fn new(bytes: *const [u8]) -> Result<Elf<'a>, ElfError> {
         let bytes = unsafe { &*bytes };
         for i in 0..100 {
-            print!("{} ", bytes[i]);
+            dprint!("{} ", bytes[i]);
             if i % 10 == 9 {
                 println!();
             }
@@ -26,7 +26,7 @@ impl<'a> Elf<'a> {
             let data: *const ElfHeader = bytes.as_ptr() as *const ElfHeader;
             &*(data)
         };
-        println!("{:?}", elf);
+        dprintln!("{:?}", elf);
         if elf.magic != ELF_MAGIC {
             return Err(ElfError::InvalidMagic);
         }
@@ -76,7 +76,7 @@ impl<'a> Iterator for Programs<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.i < (self.elf.phnum as usize) {
-            println!(
+            dprintln!(
                 "file place at {}",
                 (self.elf.phoff as usize + self.i * self.elf.phentsize as usize)
             );

@@ -3,6 +3,8 @@ use core::fmt::Write;
 const UART_RX: *const u8 = 0x80000000 as *const u8;
 const UART_TX: *mut u8 = 0x80000004 as *mut u8;
 
+pub const DEBUG: bool = true;
+
 struct UART;
 
 fn write_byte(byte: u8) {
@@ -28,12 +30,28 @@ pub fn print(arg: ::core::fmt::Arguments) {
 macro_rules! print {
     ($($arg:tt)*) => ($crate::uart::print(format_args!($($arg)*)));
 }
+#[macro_export]
+macro_rules! dprint {
+    ($($arg:tt)*) => (
+        if $crate::uart::DEBUG {
+            print!($($arg)*);
+        }
+    )
+}
 
 #[macro_export]
 macro_rules! println {
     () => (print!("\n"));
     ($arg:expr) => (print!(concat!($arg, "\n")));
     ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
+}
+#[macro_export]
+macro_rules! dprintln {
+    ($($arg:tt)*) => (
+        if $crate::uart::DEBUG {
+            println!($($arg)*);
+        }
+    )
 }
 
 pub fn read_byte() -> u8 {

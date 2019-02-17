@@ -112,7 +112,7 @@ impl<'a> Process<'a> {
         for page in paging::Page::range(va, size as u32) {
             match allocator.alloc() {
                 Ok(frame) => {
-                    println!("{:?} -> {:?}", page, frame);
+                    dprintln!("{:?} -> {:?}", page, frame);
                     match self.mapper.map(page, frame, flag, allocator) {
                         Ok(_) => (),
                         Err(e) => return Err(ProcessError::FailedToMap(e)),
@@ -133,7 +133,7 @@ impl<'a> Process<'a> {
         satp::SATP::set_ppn(self.ppn());
 
         for program in elf_file.programs() {
-            /*println!(
+            /*dprintln!(
                 "{} -> {}: size {}",
                 program.virt_addr, program.phys_addr, program.mem_size
             );*/
@@ -185,6 +185,7 @@ pub struct ProcessManager<'a> {
     procs: &'a mut [Process<'a>; N_PROCS],
     id_stack: [usize; N_PROCS],
     stack: usize,
+    sched_index: usize,
 }
 
 impl<'a> ProcessManager<'a> {
@@ -208,6 +209,7 @@ impl<'a> ProcessManager<'a> {
             procs,
             id_stack,
             stack: N_PROCS,
+            sched_index: 0,
         }
     }
     pub unsafe fn alloc(&mut self) -> Result<*mut Process<'a>, ProcessError> {
@@ -228,5 +230,28 @@ impl<'a> ProcessManager<'a> {
             self.stack += 1;
             Ok(())
         }
+    }
+
+    pub fn sched(&mut self) -> Option<*mut Process<'a>> {
+        let old_index = self.sched_index;
+        for i in old_index..N_PROCS {
+            match self.procs[i].status {
+                Status::Runnable => {
+                    self.sched_index = (i + 1) % N_PROCS;
+                    return Some((&mut self.procs[i]) as *mut Process<'a>);
+                }
+                _ => (),
+            }
+        }
+        for i in 0..old_index {
+            match self.procs[i].status {
+                Status::Runnable => {
+                    self.sched_index = (i + 1) % N_PROCS;
+                    return Some((&mut self.procs[i]) as *mut Process<'a>);
+                }
+                _ => (),
+            }
+        }
+        None
     }
 }

@@ -208,6 +208,18 @@ pub enum PageError {
     IllegalAddress,
 }
 
+impl fmt::Display for PageError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FailedToAllocMemory => write!(f, "Failed to alloc memory"),
+            PageError::ProgramError(ref s) => write!(f, "Program Error: {}", s),
+            MapError => write!(f, "Map error"),
+            AlreadyMapped => write!(f, "Already mapped"),
+            IllegalAddress => write!(f, "Illegal address"),
+        }
+    }
+}
+
 impl<'a> Allocator<'a> {
     pub unsafe fn new(frames: *mut u32, is_used: &Fn(usize) -> bool) -> Allocator<'a> {
         let frames = &mut *(frames as *mut [Frame; N_FRAMES]);
@@ -222,7 +234,7 @@ impl<'a> Allocator<'a> {
             }
             stack += 1;
         }
-        println!("N_FRAMES: {}, stack: {}", N_FRAMES, stack);
+        dprintln!("N_FRAMES: {}, stack: {}", N_FRAMES, stack);
         Allocator { frames, stack }
     }
     pub fn alloc(&mut self) -> Result<Frame, PageError> {
@@ -245,7 +257,7 @@ impl<'a> Allocator<'a> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct PageTableEntry {
     entry: u32,
 }
@@ -255,7 +267,7 @@ impl PageTableEntry {
         PageTableEntry { entry: 0 }
     }
     fn flag(&self) -> Flag {
-        Flag::from_bits_truncate(self.entry)
+        Flag::from_bits_truncate(self.entry & 0x3ff)
     }
     fn is_valid(&self) -> bool {
         self.flag().contains(Flag::VALID)
@@ -269,6 +281,11 @@ impl PageTableEntry {
     }
     fn frame(&self) -> Frame {
         Frame::from_addr(self.phys_addr())
+    }
+}
+impl fmt::Display for PageTableEntry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:x}", self.entry)
     }
 }
 
@@ -293,6 +310,18 @@ impl PageTable {
             Frame::from_addr(PhysAddr((table as *const PageTable) as u64)),
             Flag::VALID,
         );
+    }
+}
+
+impl fmt::Display for PageTable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for i in 0..N_PAGE_ENTRY {
+            write!(f, "{} ", self.entries[i])?;
+            if i % 8 == 7 {
+                write!(f, "\n")?;
+            }
+        }
+        write!(f, "\n")
     }
 }
 
@@ -335,6 +364,7 @@ impl<'a> Map<'a> {
         satp::SATP::set_ppn(self.ppn());
 
         let user_entry = USER_MEMORY_BASE / (PGSIZE * N_PAGE_ENTRY);
+        dprintln!("start creating cow");
         for i in user_entry..(N_PAGE_ENTRY - 1) {
             let flag = self.dir[i].flag();
             if flag.contains(Flag::VALID) {
@@ -342,7 +372,15 @@ impl<'a> Map<'a> {
                 let table = Map::get_vpn1_page_table(i);
                 for j in 0..(N_PAGE_ENTRY - 1) {
                     // a process which forked two times but still contains COW has !VALID & COW
-                    if table[j].flag().contains(Flag::VALID | Flag::COW) {
+                    /*dprintln!(
+                        "{} {} {} {}",
+                        table[j],
+                        table[j].flag().contains(Flag::VALID),
+                        table[j].flag().contains(Flag::WRITE),
+                        table[j].flag().contains(Flag::READ)
+                    );*/
+                    if table[j].flag().contains(Flag::VALID) || table[j].flag().contains(Flag::COW)
+                    {
                         let new_flag: Flag;
                         if table[j].flag().contains(Flag::WRITE) {
                             new_flag = table[j].flag() & (!Flag::WRITE) | Flag::COW;
@@ -350,11 +388,12 @@ impl<'a> Map<'a> {
                             new_flag = table[j].flag();
                         }
                         let page = Page::from_vpns([j as u32, i as u32]);
+                        let frame = table[j].frame();
 
                         let old_satp = satp::SATP::read();
                         satp::SATP::set_ppn(map.ppn());
-                        map.map(page, table[j].frame(), new_flag, allocator)?;
-                        old_satp.commit()
+                        map.map(page, frame, new_flag, allocator)?;
+                        old_satp.commit();
                     }
                 }
             }
@@ -389,7 +428,6 @@ impl<'a> Map<'a> {
                 frame = allocator.alloc()?;
                 entry.set_frame(frame, Flag::VALID);
                 tmp_entry.set_frame(frame, Flag::READ | Flag::WRITE | Flag::VALID);
-                println!("entry {:x}", tmp_entry.flag());
                 true
             } else {
                 frame = Frame::from_addr(entry.phys_addr());
@@ -517,7 +555,6 @@ impl<'a> Map<'a> {
     }
 
     pub fn ppn(&self) -> u32 {
-        println!("page dir {:x}", self.dir as *const PageTable as u32);
         (VirtAddr::from_ptr(self.dir as *const PageTable)
             .kern_phys_addr()
             .to_u64()
