@@ -30,9 +30,20 @@ pub fn read_u32() -> u32 {
 
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
-    let size = read_u32();
+    let size = read_u32() as usize;
     let mut addr = KERN_START;
-    for _ in 0..size / 4 {
+    for i in 0..size / 4 {
+        if (i % (KERN_START / 100) == 0) {
+            unsafe {
+            asm!("
+                lui a0, %hi(0x80000004)
+                addi a0, a0, %lo(0x80000004)
+
+                addi a1, x0, 111
+                sw a1, 0(a0)
+                ");
+            }
+        }
         let ptr = addr as *mut u32;
         unsafe {
             *ptr = u32::from_be(read_u32());

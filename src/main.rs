@@ -93,8 +93,8 @@ pub extern "C" fn boot_time_trap_handler() -> ! {
         csrrs $1, scause, x0\n
         csrrs $2, stval, x0\n
         csrrs $3, sstatus, x0\n
-        csrrs $3, sie, x0\n
-        mv $3, sp\n
+        csrrs $4, sie, x0\n
+        mv $5, sp\n
     "
         : "=&r"(sepc), "=&r"(scause), "=&r"(stval), "=&r"(sstatus), "=&r"(sie), "=&r"(sp)
             );
@@ -122,7 +122,25 @@ fn setup_boot_time_trap() {
 
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
+    unsafe {
+        asm!(
+            "
+        lui a0, %hi(0x80000004)
+        addi a0, a0, %lo(0x80000004)
+
+        addi a1, x0, 111
+        sw a1, 0(a0)
+        addi a1, x0, 107
+        sw a1, 0(a0)
+        addi a1, x0, 10
+        sw a1, 0(a0)
+        "
+        );
+    }
+    println!("wei");
     setup_boot_time_trap();
+    println!("yey");
+    //loop {}
 
     // setup kernel page table
     let kern_pgdir =
@@ -257,7 +275,7 @@ pub extern "C" fn __start_rust() -> ! {
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info);
+    //println!("{}", info);
     loop {}
 }
 

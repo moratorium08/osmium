@@ -1,4 +1,6 @@
 use core::fmt;
+use csr;
+use csr::{CSRRead, CSRWrite};
 use kernel;
 use stvec;
 use syscall;
@@ -150,20 +152,20 @@ impl Exception {
     }
     pub fn to_u32(self) -> u32 {
         match self {
-            Exception::InstructionAddressMisaligned => 0,
-            Exception::InstructionAccessFault => 1,
-            Exception::IllegalInstruction => 2,
-            Exception::Breakpoint => 3,
-            Exception::LoadAccessMisaligned => 4,
-            Exception::LoadAccessFault => 5,
-            Exception::StoreAddressMisalinged => 6,
-            Exception::StoreAccessFault => 7,
-            Exception::EnvironmentCallU => 8,
-            Exception::EnvironmentCallS => 9,
-            Exception::EnvironmentCallM => 11,
-            Exception::InstructionPageFault => 12,
-            Exception::LoadPageFault => 13,
-            Exception::StorePageFault => 15,
+            Exception::InstructionAddressMisaligned => 0 << 1,
+            Exception::InstructionAccessFault => 1 << 1,
+            Exception::IllegalInstruction => 2 << 1,
+            Exception::Breakpoint => 3 << 1,
+            Exception::LoadAccessMisaligned => 4 << 1,
+            Exception::LoadAccessFault => 5 << 1,
+            Exception::StoreAddressMisalinged => 6 << 1,
+            Exception::StoreAccessFault => 7 << 1,
+            Exception::EnvironmentCallU => 8 << 1,
+            Exception::EnvironmentCallS => 9 << 1,
+            Exception::EnvironmentCallM => 11 << 1,
+            Exception::InstructionPageFault => 12 << 1,
+            Exception::LoadPageFault => 13 << 1,
+            Exception::StorePageFault => 15 << 1,
         }
     }
     // use bitflags
@@ -276,15 +278,45 @@ pub fn handle_envcall(mut tf: TrapFrame) -> ! {
     }
 }
 
+fn handle_store_page_fault(mut tf: TrapFrame) -> ! {
+    let k = unsafe { kernel::get_kernel() };
+
+    let stval = csr::stval::STVAL::read();
+    //k.current_process.unwrap().mapper.check()
+    unimplemented!()
+}
+fn handle_load_page_fault(mut tf: TrapFrame) -> ! {
+    unimplemented!()
+}
+fn handle_instr_page_fault(mut tf: TrapFrame) -> ! {
+    unimplemented!()
+}
+fn handle_access_fault(mut tf: TrapFrame) -> ! {
+    unimplemented!()
+}
+
 fn exception_handler(exc: Exception, tf: TrapFrame) -> ! {
     match exc {
         Exception::EnvironmentCallU => handle_envcall(tf),
+        Exception::LoadPageFault => handle_load_page_fault(tf),
+        Exception::StorePageFault => handle_store_page_fault(tf),
+        Exception::InstructionPageFault => handle_instr_page_fault(tf),
+        Exception::LoadAccessFault
+        | Exception::StoreAccessFault
+        | Exception::InstructionAccessFault => handle_access_fault(tf),
         _ => panic!("{} is not supported", exc.to_str()),
     }
 }
 
+fn handle_timer(mut tf: TrapFrame) -> ! {
+    unimplemented!()
+}
+
 fn interruption_handler(itrpt: Interruption, tf: TrapFrame) -> ! {
     match itrpt {
+        Interruption::MachineTimer | Interruption::SupervisorTimer | Interruption::UserTimer => {
+            handle_timer(tf)
+        }
         _ => panic!("{} is not supported", itrpt.to_str()),
     }
 }
@@ -295,6 +327,26 @@ fn trap(tf: TrapFrame) -> ! {
 
     let trap = Trap::from_u32(tf.regs.int_regs[2]).expect("failed to parse trap cause");
     dprintln!("caught trap: {}", trap);
+    let sstatus: u32;
+    let sie: u32;
+    // TODO: create CSR wrapper
+    unsafe {
+        asm!(
+            "
+        csrrs $0, sstatus, x0\n
+        csrrs $1, sie, x0\n
+    "
+        : "=&r"(sstatus), "=&r"(sie)
+            );
+    }
+    dprintln!(
+        "sepc = {:x}, stval = {:x}\nsstatus = {:x}, sie = {:x}, sp = {:x}",
+        tf.pc,
+        csr::stval::STVAL::read_csr(),
+        sstatus,
+        sie,
+        tf.sp
+    );
 
     match trap {
         Trap::Exception(e) => exception_handler(e, tf),

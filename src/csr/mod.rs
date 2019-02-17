@@ -1,6 +1,7 @@
 pub mod satp;
 pub mod scause;
 pub mod sepc;
+pub mod stval;
 pub mod stvec;
 
 pub trait CSRWrite {

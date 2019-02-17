@@ -560,4 +560,14 @@ impl<'a> Map<'a> {
             .to_u64()
             >> LOG_PGSIZE) as u32
     }
+
+    pub fn check_perm(&self, addr: VirtAddr, flag: Flag) -> bool {
+        let p = Page::from_addr(addr);
+
+        let t = Map::vpn1_page(p);
+        let ptr: *mut PageTable = t.base_addr().as_mut_ptr();
+        let table = unsafe { &mut *ptr };
+        //        let pte = &mut table[p.vpn0()];
+        true
+    }
 }
