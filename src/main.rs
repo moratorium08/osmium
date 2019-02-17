@@ -122,25 +122,19 @@ fn setup_boot_time_trap() {
 
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
-    unsafe {
-        asm!(
-            "
-        lui a0, %hi(0x80000004)
-        addi a0, a0, %lo(0x80000004)
+    //setup_boot_time_trap();
 
-        addi a1, x0, 111
-        sw a1, 0(a0)
-        addi a1, x0, 107
-        sw a1, 0(a0)
-        addi a1, x0, 10
-        sw a1, 0(a0)
-        "
-        );
+    let x = 4u16;
+    let y = 40i16;
+    let mut z = 0i16;
+    let mut w = 0u16;
+    for i in 0..x {
+        z += y;
+        w += z as u16;
     }
-    println!("wei");
-    setup_boot_time_trap();
-    println!("yey");
-    //loop {}
+    let k = 0xdeadbeefu32;
+    let k = unsafe { *((&k as *const u32 as usize + 2) as *const u16) };
+    println!("{} {:x} {:x}\n", z, w, k);
 
     // setup kernel page table
     let kern_pgdir =
@@ -275,7 +269,7 @@ pub extern "C" fn __start_rust() -> ! {
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {
-    //println!("{}", info);
+    println!("{}", info);
     loop {}
 }
 

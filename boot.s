@@ -22,6 +22,11 @@ kernel_pgdir_ptr:
 temporary_pgdir_ptr:
     .skip 4096
 
+# (for reserve region. use for page copy between two different memory space)
+.global tmp_reserved_page
+tmp_reserved_page: 
+    .skip 4096
+
 .global kernel_frames_ptr
 kernel_frames_ptr:
     .skip 2097152

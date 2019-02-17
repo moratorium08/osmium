@@ -2,6 +2,8 @@ use core::fmt;
 use csr;
 use csr::{CSRRead, CSRWrite};
 use kernel;
+use paging;
+use proc;
 use stvec;
 use syscall;
 
@@ -278,15 +280,53 @@ pub fn handle_envcall(mut tf: TrapFrame) -> ! {
     }
 }
 
+fn kill_process_by_exception(mut tf: TrapFrame, k: &mut kernel::Kernel) {}
+
 fn handle_store_page_fault(mut tf: TrapFrame) -> ! {
     let k = unsafe { kernel::get_kernel() };
 
     let stval = csr::stval::STVAL::read();
-    //k.current_process.unwrap().mapper.check()
-    unimplemented!()
+    let addr = paging::VirtAddr::new(paging::VirtAddr::new(stval.val).page_start_addr());
+    if k.current_process
+        .as_mut()
+        .unwrap()
+        .mapper
+        .check_perm(addr, paging::Flag::COW)
+    {
+        // get parent process p
+        /*
+        dprintln!("getting parent ");
+        let ptr = unsafe {
+            k.process_manager
+                .id2proc(k.current_process.as_mut().unwrap().id)
+        };
+
+        let parent = match ptr {
+            Ok(ptr) => unsafe { &mut *ptr },
+            Err(_) => {
+                // kill current process
+                unimplemented!();
+            }
+        };*/
+
+        // handle cow
+        dprintln!("handle cow");
+        let frame = &mut k
+            .current_process
+            .as_mut()
+            .unwrap()
+            .mapper
+            .clone_page(paging::Page::from_addr(addr), &mut k.allocator);
+    } else {
+        // kill process
+        unimplemented!();
+    }
+    dprintln!("Good luck");
+    k.run_into_user()
 }
 fn handle_load_page_fault(mut tf: TrapFrame) -> ! {
-    unimplemented!()
+    let k = unsafe { kernel::get_kernel() };
+    k.run_into_user()
 }
 fn handle_instr_page_fault(mut tf: TrapFrame) -> ! {
     unimplemented!()

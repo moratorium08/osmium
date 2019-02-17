@@ -26,7 +26,7 @@ pub extern "C" fn _start() -> ! {
             println!("fork failed");
         },
         syscall::ForkResult::Child => {
-            println!("I'm a child!! ogya-")
+            println!("I'm a child!! ogya-");
         }
     }
 

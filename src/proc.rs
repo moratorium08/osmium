@@ -27,6 +27,7 @@ pub enum ProcessError {
     FailedToCreateProcess,
     FailedToMap(paging::PageError),
     ProgramError(&'static str),
+    NoSuchProcess,
 }
 
 impl ProcessError {
@@ -35,6 +36,7 @@ impl ProcessError {
             ProcessError::FailedToCreateProcess => "failed to create process",
             ProcessError::FailedToMap(_) => "failed to map",
             ProcessError::ProgramError(s) => s,
+            ProcessError::NoSuchProcess => "no such process",
         }
     }
 }
@@ -45,7 +47,7 @@ impl fmt::Display for ProcessError {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Id(pub u32);
 
 impl Id {
@@ -168,6 +170,7 @@ impl<'a> Process<'a> {
     }
 
     pub fn run(&mut self) -> ! {
+        println!("I will run: {:x}, {:x}", self.id.0, self.trap_frame.pc);
         satp::SATP::set_ppn(self.ppn());
         self.status = Status::Running;
         unsafe {
@@ -211,6 +214,15 @@ impl<'a> ProcessManager<'a> {
             stack: N_PROCS,
             sched_index: 0,
         }
+    }
+
+    pub unsafe fn id2proc(&mut self, id: Id) -> Result<*mut Process<'a>, ProcessError> {
+        for i in 0..N_PROCS {
+            if self.procs[i].id == id {
+                return Ok((&mut self.procs[id.0 as usize]) as *mut Process<'a>);
+            }
+        }
+        Err(ProcessError::NoSuchProcess)
     }
     pub unsafe fn alloc(&mut self) -> Result<*mut Process<'a>, ProcessError> {
         if self.stack == 0 {

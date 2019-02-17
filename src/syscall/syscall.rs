@@ -6,6 +6,7 @@ use crate::uart;
 use core::fmt;
 use core::slice;
 
+#[derive(Copy, Clone, Debug)]
 pub enum Syscall {
     UartWrite { buf: u32, size: u32 },
     UartRead { buf: u32, size: u32 },
@@ -94,6 +95,7 @@ pub fn get_proc_id(k: &kernel::Kernel) -> Result<u32, SyscallError> {
 }
 
 pub fn yield_process(k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
+    k.current_process.as_mut().unwrap().status = proc::Status::Runnable;
     k.current_process = None;
     Ok(0)
 }
@@ -148,6 +150,7 @@ pub fn syscall_dispatch(
     k: &mut kernel::Kernel,
     tf: &trap::TrapFrame,
 ) -> Result<u32, SyscallError> {
+    println!("{:?}", sc);
     match sc {
         Syscall::UartRead { buf, size } => uart_read(buf, size),
         Syscall::UartWrite { buf, size } => uart_write(buf, size),

@@ -1,7 +1,9 @@
 use core::fmt;
 use core::ops;
+use core::slice;
 use csr::satp;
 use csr::{CSRRead, CSRWrite};
+use memutil;
 
 pub const LOG_PGSIZE: usize = 12;
 pub const PGSIZE: usize = 1 << LOG_PGSIZE;
@@ -11,6 +13,16 @@ pub const PAGE_ENTRY_SIZE: usize = 4;
 pub const N_PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
 pub const TMP_PAGE_ENTRY: usize = N_PAGE_ENTRY - 1;
 pub const USER_MEMORY_BASE: usize = 0x80400000;
+
+extern "C" {
+    static tmp_reserved_page: u8;
+}
+
+fn get_tmp_page_addr() -> Page {
+    Page::from_addr(VirtAddr::new(unsafe {
+        (&tmp_reserved_page as *const u8) as u32
+    }))
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct PhysAddr(u64);
@@ -206,6 +218,7 @@ pub enum PageError {
     MapError,
     AlreadyMapped,
     IllegalAddress,
+    PageIsNotMapped,
 }
 
 impl fmt::Display for PageError {
@@ -282,6 +295,9 @@ impl PageTableEntry {
     fn frame(&self) -> Frame {
         Frame::from_addr(self.phys_addr())
     }
+    fn unset_frame(&mut self) {
+        self.entry = 0;
+    }
 }
 impl fmt::Display for PageTableEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -351,6 +367,7 @@ impl<'a> Map<'a> {
     pub fn clone_dir(&self, map: &mut Map) {
         for i in 0..(N_PAGE_ENTRY - 1) {
             map.dir[i] = self.dir[i];
+            map.tmp_page[i] = self.tmp_page[i];
         }
     }
 
@@ -390,6 +407,9 @@ impl<'a> Map<'a> {
                         let page = Page::from_vpns([j as u32, i as u32]);
                         let frame = table[j].frame();
 
+                        // also set cow on parent space
+                        table[j].set_frame(frame, new_flag);
+
                         let old_satp = satp::SATP::read();
                         satp::SATP::set_ppn(map.ppn());
                         map.map(page, frame, new_flag, allocator)?;
@@ -411,6 +431,18 @@ impl<'a> Map<'a> {
         let page = Page::from_vpns([index as u32, TMP_PAGE_ENTRY as u32]);
         let ptr = page.base_addr().as_mut_ptr();
         unsafe { &mut (*ptr) }
+    }
+
+    fn get_next_table(&mut self, page: Page) -> Result<&'a mut PageTable, PageError> {
+        let entry = &mut self.dir[page.vpn1() as usize];
+        let tmp_entry = &mut self.tmp_page[page.vpn1() as usize];
+        if !entry.is_valid() {
+            Err(PageError::PageIsNotMapped)
+        } else {
+            let ptr = Map::vpn1_page(page).base_addr().as_mut_ptr();
+            let table: &mut PageTable = unsafe { &mut (*ptr) };
+            Ok(table)
+        }
     }
 
     fn create_next_table(
@@ -447,6 +479,7 @@ impl<'a> Map<'a> {
         }
         Ok(table)
     }
+
     fn map_inner(
         &mut self,
         page: Page,
@@ -484,6 +517,62 @@ impl<'a> Map<'a> {
         allocator: &mut Allocator,
     ) -> Result<(), PageError> {
         self.map_inner(page, frame, flag, allocator, false)
+    }
+
+    fn get_table_entry(&mut self, page: Page) -> Result<&'a mut PageTableEntry, PageError> {
+        let vpn1 = self.get_next_table(page)?;
+        let entry = &mut vpn1[page.vpn0() as usize];
+        Ok(entry)
+    }
+
+    pub fn flag(&mut self, page: Page) -> Result<Flag, PageError> {
+        let entry = self.get_table_entry(page)?;
+        Ok(entry.flag())
+    }
+
+    pub fn clone_page(&mut self, page: Page, allocator: &mut Allocator) -> Result<(), PageError> {
+        let mut flag = self.flag(page)?;
+        flag.remove(Flag::COW);
+        flag.insert(Flag::WRITE);
+        let frame = allocator.alloc()?;
+        dprintln!("got flag, frame");
+
+        let old_satp = satp::SATP::read();
+        satp::SATP::set_ppn(self.ppn());
+
+        let tmp_page = get_tmp_page_addr();
+
+        dprintln!("tmp page");
+        self.map(
+            tmp_page,
+            frame,
+            Flag::READ | Flag::WRITE | Flag::VALID,
+            allocator,
+        )?;
+        dprintln!("memcpy");
+        unsafe {
+            memutil::memcpy(
+                tmp_page.base_addr().as_mut_ptr(),
+                &*slice::from_raw_parts(page.base_addr().as_mut_ptr(), 4096),
+                4096,
+            );
+        }
+
+        dprintln!("mapping new frame");
+        self.map(page, frame, flag, allocator)?;
+
+        dprintln!("unmapping");
+        self.unmap(tmp_page)?;
+
+        old_satp.commit();
+        Ok(())
+    }
+
+    fn unmap(&mut self, page: Page) -> Result<(), PageError> {
+        let vpn1 = self.get_next_table(page)?;
+        let entry = &mut vpn1[page.vpn0() as usize];
+        entry.unset_frame();
+        Ok(())
     }
 
     fn map_region_inner(
@@ -567,7 +656,9 @@ impl<'a> Map<'a> {
         let t = Map::vpn1_page(p);
         let ptr: *mut PageTable = t.base_addr().as_mut_ptr();
         let table = unsafe { &mut *ptr };
-        //        let pte = &mut table[p.vpn0()];
-        true
+        let pte = &mut table[p.vpn0() as usize];
+
+        let pte_flag = pte.flag();
+        pte_flag.contains(flag)
     }
 }
