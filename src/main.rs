@@ -12,6 +12,7 @@ extern crate array_init;
 pub mod uart;
 pub mod csr;
 pub mod elf;
+pub mod file;
 pub mod files;
 pub mod kernel;
 pub mod memlayout;

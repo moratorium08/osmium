@@ -6,6 +6,7 @@ pub struct Kernel<'a> {
     pub mapper: paging::Map<'a>,
     pub allocator: paging::Allocator<'a>,
     pub process_manager: proc::ProcessManager<'a>,
+
     pub current_process: Option<&'a mut proc::Process<'a>>,
 }
 
