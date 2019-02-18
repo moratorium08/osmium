@@ -57,14 +57,14 @@ impl CSRWrite for SSTATUS {
     }
     fn to_u32(&self) -> u32 {
         let spie = if self.spie { 1 << 5 } else { 0 };
-        let sie  = if self.sie { 1 << 1 } else { 0 };
+        let sie = if self.sie { 1 << 1 } else { 0 };
         spie | sie
     }
 }
 
 impl SSTATUS {
     pub fn spie_on() {
-        let v = SSTATUS{
+        let v = SSTATUS {
             spie: true,
             sie: false,
         }
