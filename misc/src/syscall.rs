@@ -37,6 +37,19 @@ fn syscall_2(num: u32, a: u32, b: u32) -> u32 {
     result
 }
 
+fn syscall_3(num: u32, a: u32, b: u32, c: u32) -> u32 {
+    let result: u32;
+    unsafe {
+        asm!("
+            ecall
+        "
+        : "={x10}"(result)
+        : "{x10}"(num), "{x11}"(a), "{x12}"(b), "{x13}"(c)
+        );
+    }
+    result
+}
+
 pub fn sys_write(buf: &[u8], size: usize) -> u32 {
     syscall_2(0, buf.as_ptr() as u32, size as u32)
 }
@@ -72,4 +85,9 @@ pub fn sys_fork() -> ForkResult {
     } else {
         ForkResult::Parent(r as u32)
     }
+}
+
+pub fn sys_execve(filename: &str, argv: &[* const u32], envp: &[* const u32]) -> ! {
+    syscall_3(8, filename.as_ptr() as u32, argv.as_ptr() as u32, envp.as_ptr() as u32);
+    loop {}
 }

@@ -99,11 +99,16 @@ pub extern "C" fn boot_time_trap_handler() -> ! {
         : "=&r"(sepc), "=&r"(scause), "=&r"(stval), "=&r"(sstatus), "=&r"(sie), "=&r"(sp)
             );
     }
-
     println!(
-        "sepc = {:x}, scause = {:x}, stval = {:x}\nsstatus = {:x}, sie = {:x}, sp = {:x}",
+        "[store]sepc = {:x}, scause = {:x}, stval = {:x}\nsstatus = {:x}, sie = {:x}, sp = {:x}",
         sepc, scause, stval, sstatus, sie, sp
     );
+    if scause == (1 << 17) {
+        unsafe {
+            asm!("sret");
+        }
+    }
+
     panic!("boot error. bye")
 }
 
@@ -123,7 +128,7 @@ fn setup_boot_time_trap() {
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
     //setup_boot_time_trap();
-
+    /*
     let x = 4u16;
     let y = 40i16;
     let mut z = 0i16;
@@ -135,6 +140,7 @@ pub extern "C" fn __start_rust() -> ! {
     let k = 0xdeadbeefu32;
     let k = unsafe { *((&k as *const u32 as usize + 2) as *const u16) };
     println!("{} {:x} {:x}\n", z, w, k);
+    */
 
     // setup kernel page table
     let kern_pgdir =

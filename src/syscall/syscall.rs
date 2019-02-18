@@ -1,10 +1,15 @@
 use super::number;
+use crate::elf;
+use crate::files;
 use crate::kernel;
+use crate::memlayout;
+use crate::memutil;
 use crate::proc;
 use crate::trap;
 use crate::uart;
 use core::fmt;
 use core::slice;
+use core::str;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Syscall {
@@ -14,6 +19,7 @@ pub enum Syscall {
     GetProcId,
     Yield,
     Fork,
+    Execve { filename: u32, argv: u32, envp: u32 },
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -22,6 +28,7 @@ pub enum SyscallError {
     InternalError,
     TooManyProcess,
     NoMemorySpace,
+    InvalidArguments,
 }
 
 impl fmt::Display for SyscallError {
@@ -55,6 +62,11 @@ impl Syscall {
             number::SYS_GET_PROC_ID => Ok(Syscall::GetProcId),
             number::SYS_YIELD => Ok(Syscall::Yield),
             number::SYS_FORK => Ok(Syscall::Fork),
+            number::SYS_EXECVE => Ok(Syscall::Execve {
+                filename: tf.regs.a1(),
+                argv: tf.regs.a2(),
+                envp: tf.regs.a3(),
+            }),
             _ => Err(SyscallError::InvalidSyscallNumber),
         }
     }
@@ -145,6 +157,45 @@ pub fn fork(k: &mut kernel::Kernel, tf: &trap::TrapFrame) -> Result<u32, Syscall
     Ok(process.id.to_u32())
 }
 
+fn execve(
+    filename: u32,
+    argv: u32,
+    envp: u32,
+    k: &mut kernel::Kernel,
+) -> Result<u32, SyscallError> {
+    let name: &str;
+    unsafe {
+        // TODO: user memcheck
+        let len = memutil::strlen(filename as *const u8);
+        match str::from_utf8(slice::from_raw_parts(filename as *const u8, len)) {
+            Ok(f) => name = f,
+            Err(_) => {
+                return Err(SyscallError::InvalidArguments);
+            }
+        };
+    }
+
+    let file = match files::search(name) {
+        Some(file) => file,
+        None => panic!("failed to find {}", name), // TODO: kill process
+    };
+
+    let e = elf::Elf::new(file.bytes).expect("failed to parse ELF"); // TODO: kill process
+    match k
+        .current_process
+        .as_mut()
+        .unwrap()
+        .load_elf(&e, &mut k.allocator)
+    {
+        Ok(()) => (),
+        Err(e) => panic!("failed to load elf: {}", e),
+    };
+    let tf = trap::TrapFrame::new(e.elf.entry, memlayout::USER_STACK_BOTTOMN);
+    k.current_process.as_mut().unwrap().set_trap_frame(tf);
+
+    Ok(0)
+}
+
 pub fn syscall_dispatch(
     sc: Syscall,
     k: &mut kernel::Kernel,
@@ -158,5 +209,10 @@ pub fn syscall_dispatch(
         Syscall::GetProcId => get_proc_id(k),
         Syscall::Yield => yield_process(k),
         Syscall::Fork => fork(k, tf),
+        Syscall::Execve {
+            filename,
+            argv,
+            envp,
+        } => execve(filename, argv, envp, k),
     }
 }

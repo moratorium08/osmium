@@ -258,6 +258,7 @@ pub fn trap_init() {
 }
 
 pub fn handle_envcall(mut tf: TrapFrame) -> ! {
+    tf.pc += 4;
     let kernel = unsafe { kernel::get_kernel() };
     let e = match syscall::Syscall::from_trap_frame(&tf) {
         Ok(syscall) => syscall::syscall_dispatch(syscall, kernel, &tf),
@@ -293,22 +294,6 @@ fn handle_store_page_fault(mut tf: TrapFrame) -> ! {
         .mapper
         .check_perm(addr, paging::Flag::COW)
     {
-        // get parent process p
-        /*
-        dprintln!("getting parent ");
-        let ptr = unsafe {
-            k.process_manager
-                .id2proc(k.current_process.as_mut().unwrap().id)
-        };
-
-        let parent = match ptr {
-            Ok(ptr) => unsafe { &mut *ptr },
-            Err(_) => {
-                // kill current process
-                unimplemented!();
-            }
-        };*/
-
         // handle cow
         dprintln!("handle cow");
         let frame = &mut k

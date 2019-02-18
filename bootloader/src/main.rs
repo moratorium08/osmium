@@ -64,8 +64,57 @@ pub fn read_u32() -> u32 {
     data
 }
 
+global_asm!(
+    r#"
+.global boot_time_trap_handler 
+boot_time_trap_handler:
+    csrrw x0, sscratch, sp
+    lui     sp, %hi(0x7000000)
+    addi    sp, sp, %lo(0x7000000)
+    addi sp, sp, -128
+    sw x0, 0(sp)
+    sw x1, 4(sp)
+    
+    csrrs x1, scause, x0 
+    sw x1, 8(sp)
+
+    sw x3, 12(sp)
+    sw x4, 16(sp)
+    sw x5, 20(sp)
+    sw x6, 24(sp)
+    sw x7, 28(sp)
+    sw x8, 32(sp)
+    sw x9, 36(sp)
+    sw x10, 40(sp)
+    sw x11, 44(sp)
+    sw x12, 48(sp)
+    sw x13, 52(sp)
+    sw x14, 56(sp)
+    sw x15, 60(sp)
+    sw x16, 64(sp)
+    sw x17, 68(sp)
+    sw x18, 72(sp)
+    sw x19, 76(sp)
+    sw x20, 80(sp)
+    sw x21, 84(sp)
+    sw x22, 88(sp)
+    sw x23, 92(sp)
+    sw x24, 96(sp)
+    sw x25, 100(sp)
+    sw x26, 104(sp)
+    sw x27, 108(sp)
+    sw x28, 112(sp)
+    sw x29, 116(sp)
+    sw x30, 120(sp)
+    sw x31, 124(sp)
+
+    mv a0, sp
+    call rust_boot_handler 
+"#
+);
+
 #[no_mangle]
-pub extern "C" fn boot_time_trap_handler() -> ! {
+extern "C" fn rust_boot_handler() -> ! {
     let sepc: u32;
     let scause: u32;
     let stval: u32;
@@ -85,16 +134,55 @@ pub extern "C" fn boot_time_trap_handler() -> ! {
         : "=&r"(sepc), "=&r"(scause), "=&r"(stval), "=&r"(sstatus), "=&r"(sie), "=&r"(sp)
             );
     }
-
     println!(
-        "sepc = {:x}, scause = {:x}, stval = {:x}\nsstatus = {:x}, sie = {:x}, sp = {:x}",
-        sepc,
-        scause,
-        stval,
-        sstatus,
-        sie,
-        sp
+        "[store]sepc = {:x}, scause = {:x}, stval = {:x}\nsstatus = {:x}, sie = {:x}, sp = {:x}",
+        sepc, scause, stval, sstatus, sie, sp
     );
+    if scause == (1 << 17) {
+        unsafe {
+            asm!(
+                "
+                lw x0, 0(sp)\n
+                lw x1, 4(sp)\n
+                lw x3, 12(sp)\n
+                lw x4, 16(sp)\n
+                lw x5, 20(sp)\n
+                lw x6, 24(sp)\n
+                lw x7, 28(sp)\n
+                lw x8, 32(sp)\n
+                lw x9, 36(sp)\n
+                lw x10, 40(sp)\n
+                lw x11, 44(sp)\n
+                lw x12, 48(sp)\n
+                lw x13, 52(sp)\n
+                lw x14, 56(sp)\n
+                lw x15, 60(sp)\n
+                lw x16, 64(sp)\n
+                lw x17, 68(sp)\n
+                lw x18, 72(sp)\n
+                lw x19, 76(sp)\n
+                lw x20, 80(sp)\n
+                lw x21, 84(sp)\n
+                lw x22, 88(sp)\n
+                lw x23, 92(sp)\n
+                lw x24, 96(sp)\n
+                lw x25, 100(sp)\n
+                lw x26, 104(sp)\n
+                lw x27, 108(sp)\n
+                lw x28, 112(sp)\n
+                lw x29, 116(sp)\n
+                lw x30, 120(sp)\n
+                lw x31, 124(sp)\n
+
+                addi sp, sp, 128\n
+
+                csrrs sp, sscratch, x0\n
+                sret
+            "
+            );
+        }
+    }
+
     panic!("boot error. bye")
 }
 
@@ -113,7 +201,8 @@ fn setup_boot_time_trap() {
 
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
-    setup_boot_time_trap();
+    println!("setup");
+    //setup_boot_time_trap();
     let size = read_u32() as usize;
     let mut addr = KERN_START;
     let mut target = (KERN_START + 4) as *const u32;
