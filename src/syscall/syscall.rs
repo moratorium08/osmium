@@ -213,7 +213,7 @@ fn execve(
         Ok(()) => (),
         Err(e) => panic!("failed to load elf: {}", e),
     };
-    println!("set entry point: {:x}", e.elf.entry);
+    dprintln!("set entry point: {:x}", e.elf.entry);
     let new_tf = trap::TrapFrame::new(e.elf.entry, memlayout::USER_STACK_BOTTOMN);
     *tf = new_tf;
     Ok(0)

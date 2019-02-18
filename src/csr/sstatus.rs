@@ -1,4 +1,5 @@
 use csr::{CSRRead, CSRWrite};
+use utils;
 
 pub struct SSTATUS {
     pub spie: bool,

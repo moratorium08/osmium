@@ -334,7 +334,10 @@ fn exception_handler(exc: Exception, tf: TrapFrame) -> ! {
 }
 
 fn handle_timer(mut tf: TrapFrame) -> ! {
-    unimplemented!()
+    let k = unsafe { kernel::get_kernel() };
+    k.current_process.as_mut().unwrap().status = proc::Status::Runnable;
+    k.current_process = None;
+    k.run_into_user();
 }
 
 fn interruption_handler(itrpt: Interruption, tf: TrapFrame) -> ! {
