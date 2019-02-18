@@ -11,6 +11,8 @@ extern "C" {
     static trap_entry: u8;
 }
 
+const TIMER_INTERVAL: u64 = 1000;
+
 #[derive(Copy, Clone, Debug)]
 pub enum Trap {
     Exception(Exception),
@@ -337,6 +339,8 @@ fn handle_timer(mut tf: TrapFrame) -> ! {
     let k = unsafe { kernel::get_kernel() };
     k.current_process.as_mut().unwrap().status = proc::Status::Runnable;
     k.current_process = None;
+    csr::sip::SIP::timer_off();
+    csr::timer::set_interval(csr::timer::MicroSeccond::new(TIMER_INTERVAL));
     k.run_into_user();
 }
 

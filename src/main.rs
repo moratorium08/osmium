@@ -192,7 +192,7 @@ pub extern "C" fn __start_rust() -> ! {
     if let Err(e) = mapper.boot_map_region(
         paging::VirtAddr::new(IO_REGION as u32),
         paging::PhysAddr::new(IO_REGION),
-        paging::PGSIZE,
+        paging::PGSIZE * 2,
         paging::Flag::READ | paging::Flag::WRITE | paging::Flag::EXEC | paging::Flag::VALID,
         &mut allocator,
     ) {
@@ -228,6 +228,8 @@ pub extern "C" fn __start_rust() -> ! {
     // sstatus[5] on. after sret, sstatus[5] --> sstatus[1]
     csr::sstatus::SSTATUS::spie_on();
     csr::sie::SIE::mtimer_on();
+    csr::sip::SIP::timer_off();
+    csr::timer::set_interval(csr::timer::MicroSeccond::new(1));
 
     println!("ok. Finished kernel booting");
     println!("Let's create an user process");
@@ -242,6 +244,9 @@ pub extern "C" fn __start_rust() -> ! {
         Ok(()) => (),
         Err(e) => panic!("failed to create process: {}", e),
     };
+
+    println!("setting up file system");
+    files::init();
 
     let nop_file = match files::search("nop") {
         Some(file) => file,

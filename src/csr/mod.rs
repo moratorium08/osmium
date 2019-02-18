@@ -6,6 +6,7 @@ pub mod sip;
 pub mod sstatus;
 pub mod stval;
 pub mod stvec;
+pub mod timer;
 
 pub trait CSRWrite {
     fn read_and_write(val: u32) -> u32;

@@ -2,11 +2,21 @@
 /* This is very poor system in order to create shell */
 use core::slice;
 
-const DIRECTORY_FILE_LIMIT: usize = 4;
+const DIRECTORY_FILE_LIMIT: usize = 200;
 
 extern "C" {
     static nop_start: u8;
     static nop_end: u8;
+    static loop_start: u8;
+    static loop_end: u8;
+    static ls_start: u8;
+    static ls_end: u8;
+    static loopback_start: u8;
+    static loopback_end: u8;
+    static syscaller_start: u8;
+    static syscaller_end: u8;
+    static hello_start: u8;
+    static hello_end: u8;
 }
 
 #[derive(Clone, Copy)]
@@ -29,18 +39,9 @@ struct MemoryDirectory {
     pub files: [Option<MemoryFile>; DIRECTORY_FILE_LIMIT],
 }
 
-static ROOT: MemoryDirectory = MemoryDirectory {
+static mut ROOT: MemoryDirectory = MemoryDirectory {
     name: "",
-    files: [
-        Some(MemoryFile {
-            name: "nop",
-            start: unsafe { &nop_start },
-            end: unsafe { &nop_end },
-        }),
-        None,
-        None,
-        None,
-    ],
+    files: [None; DIRECTORY_FILE_LIMIT],
 };
 
 impl MemoryDirectory {
@@ -52,6 +53,16 @@ impl MemoryDirectory {
             }
         }
         None
+    }
+}
+
+pub fn init() {
+    unsafe {
+        ROOT.files[0] = Some(MemoryFile {
+            name: "nop",
+            start: unsafe { &nop_start },
+            end: unsafe { &nop_end },
+        });
     }
 }
 
@@ -71,7 +82,7 @@ pub fn search<'a>(filename: &'a str) -> Option<File<'a>> {
     println!("nop start {:x}", unsafe { (&nop_start) } as *const u8
         as usize);
     println!("nop end {:x}", unsafe { (&nop_end) } as *const u8 as usize);
-    match ROOT.search(filename) {
+    match unsafe { ROOT.search(filename) } {
         Some(file) => {
             let size = file.size();
             let bytes: &[u8] = unsafe { slice::from_raw_parts(file.start as *const u8, size) };
