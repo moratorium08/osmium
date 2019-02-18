@@ -225,6 +225,8 @@ pub extern "C" fn __start_rust() -> ! {
     }
     trap::trap_init();
 
+    // sstatus[5] on
+
     println!("ok. Finished kernel booting");
     println!("Let's create an user process");
     let kernel = unsafe { kernel::get_kernel() };

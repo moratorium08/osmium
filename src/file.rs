@@ -384,7 +384,22 @@ impl<'a> BlockManager<'a> {
                     }
                     return Ok(DataWrapper::Directory(DirectoryWrapper::from(d, *id)));
                 }
-                Ok(Data::File(f)) => return Err(FileError::NotFound),
+                Ok(Data::File(f)) => {
+                    let mut tmp_idx = name_idx;
+                    for i in 0..(256 - name_idx) {
+                        if name[name_idx + i] != f.name[i] {
+                            continue 'outer;
+                        }
+                        if f.name[i] == 0 {
+                            break;
+                        }
+                        tmp_idx += 1;
+                    }
+                    if name[255] != b'\x00' {
+                        return Err(FileError::BrokenFile);
+                    }
+                    return Ok(DataWrapper::File(FileWrapper::from(f, *id)));
+                }
                 Err(e) => return Err(e),
             }
         }
