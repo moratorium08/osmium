@@ -127,21 +127,6 @@ fn setup_boot_time_trap() {
 
 #[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
-    //setup_boot_time_trap();
-    /*
-    let x = 4u16;
-    let y = 40i16;
-    let mut z = 0i16;
-    let mut w = 0u16;
-    for i in 0..x {
-        z += y;
-        w += z as u16;
-    }
-    let k = 0xdeadbeefu32;
-    let k = unsafe { *((&k as *const u32 as usize + 2) as *const u16) };
-    println!("{} {:x} {:x}\n", z, w, k);
-    */
-
     // setup kernel page table
     let kern_pgdir =
         unsafe { &mut *((&mut kernel_pgdir_ptr as *mut u32) as *mut paging::PageTable) };
@@ -258,7 +243,7 @@ pub extern "C" fn __start_rust() -> ! {
         None => panic!("failed to find nop"),
     };
 
-    println!("nop_file bytes: {}", nop_file.bytes as *const u8 as usize);
+    dprintln!("nop_file bytes: {}", nop_file.bytes as *const u8 as usize);
     let nop_elf = elf::Elf::new(nop_file.bytes).expect("failed to parse ELF");
 
     match process.load_elf(&nop_elf, &mut kernel.allocator) {

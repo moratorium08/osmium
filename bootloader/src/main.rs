@@ -209,21 +209,18 @@ pub extern "C" fn __start_rust() -> ! {
     for i in 0..size / 4 {
         let ptr = addr as *mut u32;
         let data = read_u32();
-        if (i >= 2460 && i < 0xa3d && i % 3 == 0) {
-            let sp: u32;
+        if i % (size / 100) == 0 {
             unsafe {
-                asm!("
-                    mv $0, sp"
-                    :"=&r"(sp));
+            asm!(
+            "
+            lui a0, %hi(0x80000004)
+            addi a0, a0, %lo(0x80000004)
+
+            addi a1, x0, 111
+            sw a1, 0(a0)
+            ");
             }
-            println!(
-                "{:x} {:x} {:x} {:x} {:x}",
-                i,
-                addr,
-                data,
-                unsafe { *target },
-                sp
-            );
+            
         }
         unsafe {
             *ptr = u32::from_be(data);

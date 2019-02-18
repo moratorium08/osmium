@@ -170,7 +170,7 @@ impl<'a> Process<'a> {
     }
 
     pub fn run(&mut self) -> ! {
-        println!("I will run: {:x}, {:x}", self.id.0, self.trap_frame.pc);
+        dprintln!("I will run: {:x}, {:x}", self.id.0, self.trap_frame.pc);
         satp::SATP::set_ppn(self.ppn());
         self.status = Status::Running;
         unsafe {

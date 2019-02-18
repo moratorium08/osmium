@@ -13,13 +13,26 @@ use core::str;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Syscall {
-    UartWrite { buf: u32, size: u32 },
-    UartRead { buf: u32, size: u32 },
-    Exit { status: u32 },
+    UartWrite {
+        buf: u32,
+        size: u32,
+    },
+    UartRead {
+        buf: u32,
+        size: u32,
+    },
+    Exit {
+        status: u32,
+    },
     GetProcId,
     Yield,
     Fork,
-    Execve { filename: u32, argv: u32, envp: u32 },
+    Execve {
+        filename: u32,
+        filename_length: u32,
+        argv: u32,
+        envp: u32,
+    },
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -40,13 +53,18 @@ impl fmt::Display for SyscallError {
 impl SyscallError {
     pub fn to_str(&self) -> &'static str {
         match self {
-            InvalidSyscallNumber => "Invalid Syscall Number",
+            SyscallError::InvalidSyscallNumber => "Invalid Syscall Number",
+            SyscallError::InternalError => "Internal error",
+            SyscallError::TooManyProcess => "Too many process",
+            SyscallError::NoMemorySpace => "No Memory Space",
+            SyscallError::InvalidArguments => "Invalid Arguments",
         }
     }
 }
 
 impl Syscall {
     pub fn from_trap_frame(tf: &trap::TrapFrame) -> Result<Syscall, SyscallError> {
+        dprintln!("syscall number: {:x}", tf.regs.a0());
         match tf.regs.a0() {
             number::SYS_UART_READ => Ok(Syscall::UartRead {
                 buf: tf.regs.a1(),
@@ -64,8 +82,9 @@ impl Syscall {
             number::SYS_FORK => Ok(Syscall::Fork),
             number::SYS_EXECVE => Ok(Syscall::Execve {
                 filename: tf.regs.a1(),
-                argv: tf.regs.a2(),
-                envp: tf.regs.a3(),
+                filename_length: tf.regs.a2(),
+                argv: tf.regs.a3(),
+                envp: tf.regs.a4(),
             }),
             _ => Err(SyscallError::InvalidSyscallNumber),
         }
@@ -159,15 +178,19 @@ pub fn fork(k: &mut kernel::Kernel, tf: &trap::TrapFrame) -> Result<u32, Syscall
 
 fn execve(
     filename: u32,
+    filename_length: u32,
     argv: u32,
     envp: u32,
+    tf: &mut trap::TrapFrame,
     k: &mut kernel::Kernel,
 ) -> Result<u32, SyscallError> {
     let name: &str;
     unsafe {
         // TODO: user memcheck
-        let len = memutil::strlen(filename as *const u8);
-        match str::from_utf8(slice::from_raw_parts(filename as *const u8, len)) {
+        match str::from_utf8(slice::from_raw_parts(
+            filename as *const u8,
+            filename_length as usize,
+        )) {
             Ok(f) => name = f,
             Err(_) => {
                 return Err(SyscallError::InvalidArguments);
@@ -190,18 +213,18 @@ fn execve(
         Ok(()) => (),
         Err(e) => panic!("failed to load elf: {}", e),
     };
-    let tf = trap::TrapFrame::new(e.elf.entry, memlayout::USER_STACK_BOTTOMN);
-    k.current_process.as_mut().unwrap().set_trap_frame(tf);
-
+    println!("set entry point: {:x}", e.elf.entry);
+    let new_tf = trap::TrapFrame::new(e.elf.entry, memlayout::USER_STACK_BOTTOMN);
+    *tf = new_tf;
     Ok(0)
 }
 
 pub fn syscall_dispatch(
     sc: Syscall,
     k: &mut kernel::Kernel,
-    tf: &trap::TrapFrame,
+    tf: &mut trap::TrapFrame,
 ) -> Result<u32, SyscallError> {
-    println!("{:?}", sc);
+    dprintln!("{:?}", sc);
     match sc {
         Syscall::UartRead { buf, size } => uart_read(buf, size),
         Syscall::UartWrite { buf, size } => uart_write(buf, size),
@@ -211,8 +234,9 @@ pub fn syscall_dispatch(
         Syscall::Fork => fork(k, tf),
         Syscall::Execve {
             filename,
+            filename_length,
             argv,
             envp,
-        } => execve(filename, argv, envp, k),
+        } => execve(filename, filename_length, argv, envp, tf, k),
     }
 }
