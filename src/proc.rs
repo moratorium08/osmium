@@ -22,6 +22,18 @@ pub enum Status {
     Zonmbie,
 }
 
+impl Status {
+    pub fn to_u32(&self) -> u32 {
+        match self {
+            Status::Free => 0,
+            Status::Running => 1,
+            Status::Runnable => 2,
+            Status::NotRunnable => 3,
+            Status::Zonmbie => 4,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum ProcessError {
     FailedToCreateProcess,

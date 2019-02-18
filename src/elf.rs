@@ -19,7 +19,7 @@ impl<'a> Elf<'a> {
         for i in 0..100 {
             dprint!("{} ", bytes[i]);
             if i % 10 == 9 {
-                println!();
+                dprintln!();
             }
         }
         let elf = unsafe {

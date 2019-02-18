@@ -9,14 +9,18 @@ extern "C" {
     static nop_end: u8;
     static loop_start: u8;
     static loop_end: u8;
-    static ls_start: u8;
-    static ls_end: u8;
     static loopback_start: u8;
     static loopback_end: u8;
     static syscaller_start: u8;
     static syscaller_end: u8;
     static hello_start: u8;
     static hello_end: u8;
+    static sh_start: u8;
+    static sh_end: u8;
+/*
+static ls_start: u8;
+static ls_end: u8;
+*/
 }
 
 #[derive(Clone, Copy)]
@@ -58,11 +62,20 @@ impl MemoryDirectory {
 
 pub fn init() {
     unsafe {
-        ROOT.files[0] = Some(MemoryFile {
-            name: "nop",
-            start: unsafe { &nop_start },
-            end: unsafe { &nop_end },
-        });
+        let l = [
+            ("/bin/nop", &nop_start, &nop_end),
+            ("/bin/loop", &loop_start, &loop_end),
+            ("/bin/syscaller", &syscaller_start, &syscaller_end),
+            ("/bin/hello", &hello_start, &hello_end),
+            ("/bin/sh", &sh_start, &sh_end),
+        ];
+        for (i, (n, s, e)) in l.iter().enumerate() {
+            ROOT.files[i] = Some(MemoryFile {
+                name: n,
+                start: unsafe { &s },
+                end: unsafe { &e },
+            });
+        }
     }
 }
 
@@ -79,9 +92,6 @@ impl<'a> File<'a> {
 }
 
 pub fn search<'a>(filename: &'a str) -> Option<File<'a>> {
-    println!("nop start {:x}", unsafe { (&nop_start) } as *const u8
-        as usize);
-    println!("nop end {:x}", unsafe { (&nop_end) } as *const u8 as usize);
     match unsafe { ROOT.search(filename) } {
         Some(file) => {
             let size = file.size();

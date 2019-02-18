@@ -33,6 +33,9 @@ pub enum Syscall {
         argv: u32,
         envp: u32,
     },
+    CheckProcessStatus {
+        id: u32,
+    },
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -86,6 +89,7 @@ impl Syscall {
                 argv: tf.regs.a3(),
                 envp: tf.regs.a4(),
             }),
+            number::SYS_PROC_STATUS => Ok(Syscall::CheckProcessStatus { id: tf.regs.a1() }),
             _ => Err(SyscallError::InvalidSyscallNumber),
         }
     }
@@ -219,6 +223,18 @@ fn execve(
     Ok(0)
 }
 
+pub fn check_process_status(id: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
+    let p: &mut proc::Process;
+    match unsafe { k.process_manager.id2proc(proc::Id(id)) } {
+        Ok(ptr) => p = unsafe { &mut *ptr },
+        Err(_) => return Err(SyscallError::InvalidArguments),
+    }
+    if p.parent_id != k.current_process.as_ref().unwrap().id {
+        return Err(SyscallError::InvalidArguments);
+    }
+    Ok(p.status.to_u32())
+}
+
 pub fn syscall_dispatch(
     sc: Syscall,
     k: &mut kernel::Kernel,
@@ -238,5 +254,6 @@ pub fn syscall_dispatch(
             argv,
             envp,
         } => execve(filename, filename_length, argv, envp, tf, k),
+        Syscall::CheckProcessStatus { id } => check_process_status(id, k),
     }
 }

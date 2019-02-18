@@ -228,6 +228,7 @@ pub extern "C" fn __start_rust() -> ! {
     // sstatus[5] on. after sret, sstatus[5] --> sstatus[1]
     csr::sstatus::SSTATUS::spie_on();
     csr::sie::SIE::mtimer_on();
+    csr::sie::SIE::software_on();
     csr::sip::SIP::timer_off();
     csr::timer::set_interval(csr::timer::MicroSeccond::new(1));
 
@@ -248,13 +249,13 @@ pub extern "C" fn __start_rust() -> ! {
     println!("setting up file system");
     files::init();
 
-    let nop_file = match files::search("nop") {
+    let sh_file = match files::search("/bin/sh") {
         Some(file) => file,
-        None => panic!("failed to find nop"),
+        None => panic!("failed to find sh"),
     };
 
-    dprintln!("nop_file bytes: {}", nop_file.bytes as *const u8 as usize);
-    let nop_elf = elf::Elf::new(nop_file.bytes).expect("failed to parse ELF");
+    dprintln!("sh_file bytes: {}", sh_file.bytes as *const u8 as usize);
+    let nop_elf = elf::Elf::new(sh_file.bytes).expect("failed to parse ELF");
 
     match process.load_elf(&nop_elf, &mut kernel.allocator) {
         Ok(()) => (),

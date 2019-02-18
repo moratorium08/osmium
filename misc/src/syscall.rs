@@ -101,7 +101,33 @@ pub fn sys_fork() -> ForkResult {
     }
 }
 
-pub fn sys_execve(filename: &str, argv: &[* const u32], envp: &[* const u32]) -> ! {
-    syscall_4(8, filename.as_bytes().as_ptr() as u32, filename.len() as u32, argv.as_ptr() as u32, envp.as_ptr() as u32);
+pub fn sys_execve(filename: &str, filename_len: u32, argv: &[* const u32], envp: &[* const u32]) -> ! {
+    syscall_4(8, filename.as_bytes().as_ptr() as u32, filename_len, argv.as_ptr() as u32, envp.as_ptr() as u32);
     loop {}
+}
+
+pub enum ProcessStatus {
+    Free,
+    Running,
+    Runnable,
+    NotRunnable,
+    Zonmbie,
+}
+
+impl ProcessStatus {
+    pub fn from_u32(x: u32) -> ProcessStatus {
+        match x {
+            0 => ProcessStatus::Free,
+            1 => ProcessStatus::Running,
+            2 => ProcessStatus::Runnable,
+            3 => ProcessStatus::NotRunnable,
+            4 => ProcessStatus::Zonmbie,
+            _ => panic!("failed to handle process status")
+        }
+    }
+}
+
+pub fn sys_check_process_status(id: u32) -> ProcessStatus {
+    let r = syscall_1(9, id);
+    ProcessStatus::from_u32(r)
 }

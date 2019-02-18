@@ -206,21 +206,13 @@ pub extern "C" fn __start_rust() -> ! {
     let size = read_u32() as usize;
     let mut addr = KERN_START;
     let mut target = (KERN_START + 4) as *const u32;
+
+    let s = size / 4 / 100;
     for i in 0..size / 4 {
         let ptr = addr as *mut u32;
         let data = read_u32();
-        if i % (size / 100) == 0 {
-            unsafe {
-            asm!(
-            "
-            lui a0, %hi(0x80000004)
-            addi a0, a0, %lo(0x80000004)
-
-            addi a1, x0, 111
-            sw a1, 0(a0)
-            ");
-            }
-            
+        if i % s == 0 {
+            println!("{}%", i * 100 * 4 / size);
         }
         unsafe {
             *ptr = u32::from_be(data);

@@ -3,6 +3,7 @@ use utils;
 
 pub struct SIE {
     pub mtimer: bool,
+    pub software: bool,
 }
 
 impl CSRRead for SIE {
@@ -17,6 +18,7 @@ impl CSRRead for SIE {
     fn from_u32(x: u32) -> SIE {
         SIE {
             mtimer: utils::bit_range(x, 5, 6) == 1,
+            software: utils::bit_range(x, 1, 2) == 1,
         }
     }
 }
@@ -40,6 +42,7 @@ impl CSRWrite for SIE {
     }
 
     fn bit_set(bitvec: u32) {
+        println!("bitset{:x}", bitvec);
         unsafe {
             asm!("csrrs x0, sie, $0"
                 :
@@ -56,13 +59,26 @@ impl CSRWrite for SIE {
     }
     fn to_u32(&self) -> u32 {
         let mtimer = if self.mtimer { 1 << 5 } else { 0 };
-        mtimer
+        let software = if self.software { 1 << 1 } else { 0 };
+        mtimer | software
     }
 }
 
 impl SIE {
     pub fn mtimer_on() {
-        let v = SIE { mtimer: true }.to_u32();
+        let v = SIE {
+            mtimer: true,
+            software: false,
+        }
+        .to_u32();
+        SIE::bit_set(v);
+    }
+    pub fn software_on() {
+        let v = SIE {
+            mtimer: false,
+            software: true,
+        }
+        .to_u32();
         SIE::bit_set(v);
     }
 }

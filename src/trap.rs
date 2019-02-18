@@ -11,7 +11,7 @@ extern "C" {
     static trap_entry: u8;
 }
 
-const TIMER_INTERVAL: u64 = 1000;
+const TIMER_INTERVAL: u64 = 10000000;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Trap {
@@ -349,6 +349,7 @@ fn interruption_handler(itrpt: Interruption, tf: TrapFrame) -> ! {
         Interruption::MachineTimer | Interruption::SupervisorTimer | Interruption::UserTimer => {
             handle_timer(tf)
         }
+        Interruption::SupervisorSoftware => handle_timer(tf),
         _ => panic!("{} is not supported", itrpt.to_str()),
     }
 }
@@ -457,6 +458,34 @@ extern "C" fn trap_entry_rust(regs: *const Register) -> ! {
 
 pub unsafe fn pop_trap_frame(tf: &TrapFrame) -> ! {
     // TODO: prohibit interrupt
+    let sepc: u32;
+    let scause: u32;
+    let stval: u32;
+    let sstatus: u32;
+    let sie: u32;
+    let sp: u32;
+    unsafe {
+        asm!(
+            "
+        csrrs $0, sepc, x0\n
+        csrrs $1, scause, x0\n
+        csrrs $2, stval, x0\n
+        csrrs $3, sstatus, x0\n
+        csrrs $4, sie, x0\n
+        mv $5, sp\n
+    "
+        : "=&r"(sepc), "=&r"(scause), "=&r"(stval), "=&r"(sstatus), "=&r"(sie), "=&r"(sp)
+            );
+    }
+    dprintln!(
+        "[store]sepc = {:x}, scause = {:x}, stval = {:x}\nsstatus = {:x}, sie = {:x}, sp = {:x}",
+        sepc,
+        scause,
+        stval,
+        sstatus,
+        sie,
+        sp
+    );
 
     asm!(
         "
