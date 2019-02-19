@@ -62,10 +62,11 @@ impl Board {
         Board { board: [[State::Blank; 3]; 3] }
     }
     fn put(&mut self, x: usize, y: usize, turn: Turn) -> bool {
-        if self.board[y][x] != State::Blank {
+        println!("{} {}", x, y);
+        if self.board[x][y] != State::Blank {
             false
         } else {
-            self.board[y][x] = turn.to_state();
+            self.board[x][y] = turn.to_state();
             true
         }
 
@@ -76,10 +77,10 @@ impl Board {
     }
     fn column(&self, i: usize) -> bool {
         self.board[0][i] == self.board[1][i] && self.board[1][i] == self.board[2][i] &&
-            self.board[i][0] != State::Blank
+            self.board[0][i] != State::Blank
     }
     fn naname(&self) -> bool {
-        self.board[1][1] == State::Blank &&
+        self.board[1][1] != State::Blank &&
             ((self.board[0][0] == self.board[1][1] && self.board[1][1] == self.board[2][2]) ||
                  (self.board[2][0] == self.board[1][1] && self.board[1][1] == self.board[0][2]))
     }
@@ -130,9 +131,11 @@ fn get_pos() -> u8 {
         } else {
             if i != 1 {
                 println!("illegal input. try again");
+                continue;
             }
-            if buf[0] == b'0' {
+            if buf[0] == b'9' {
                 println!("illegal input. try again");
+                continue;
             }
             return buf[0] - b'0';
         }
@@ -146,19 +149,19 @@ pub extern "C" fn _start() -> ! {
     for i in 0..9 {
         board.print();
 
-        print!("Enter a number which you want to put on");
-        let p = get_pos() - 1;
+        print!("Enter a number which you want to put on> ");
+        let p = get_pos();
         let x = p % 3;
         let y = p / 3;
-        if board.put(x as usize, y as usize, turn) {
+        if !board.put(x as usize, y as usize, turn) {
             println!("You cannot put there.");
             println!("{} wins", 
             match turn {
                 Turn::Black => "white",
                 Turn::White => "black"
             });
+            return syscall::sys_exit(0);
         };
-        println!("e");
         match board.status() {
             Status::Running => {
             },
@@ -179,7 +182,9 @@ pub extern "C" fn _start() -> ! {
         }
         turn = turn.next();
     }
-    println!("bye.");
+    if board.status() == Status::Running {
+        println!("Draw.")
+    }
     syscall::sys_exit(0)
 }
 

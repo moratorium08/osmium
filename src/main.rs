@@ -254,7 +254,7 @@ pub extern "C" fn __start_rust() -> ! {
         None => panic!("failed to find sh"),
     };
 
-    dprintln!("sh_file bytes: {}", sh_file.bytes as *const u8 as usize);
+    println!("sh_file bytes: {}", sh_file.bytes as *const u8 as usize);
     let nop_elf = elf::Elf::new(sh_file.bytes).expect("failed to parse ELF");
 
     match process.load_elf(&nop_elf, &mut kernel.allocator) {
