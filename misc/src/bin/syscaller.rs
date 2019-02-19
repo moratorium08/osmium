@@ -27,7 +27,7 @@ pub extern "C" fn _start() -> ! {
         },
         syscall::ForkResult::Child => {
             println!("I'm a child!! ogya-");
-            syscall::sys_execve("nop", 3, &[], &[]);
+            syscall::sys_execve("/bin/nop", 3, &[], &[]);
         }
     }
 
@@ -41,7 +41,7 @@ use core::panic::PanicInfo;
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info);
+    syscall::sys_exit(1);
     loop {}
 }
 

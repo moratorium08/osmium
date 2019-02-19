@@ -17,6 +17,8 @@ extern "C" {
     static hello_end: u8;
     static sh_start: u8;
     static sh_end: u8;
+    static tic_start: u8;
+    static tic_end: u8;
 /*
 static ls_start: u8;
 static ls_end: u8;
@@ -68,6 +70,7 @@ pub fn init() {
             ("/bin/syscaller", &syscaller_start, &syscaller_end),
             ("/bin/hello", &hello_start, &hello_end),
             ("/bin/sh", &sh_start, &sh_end),
+            ("/bin/tic", &tic_start, &tic_end),
         ];
         for (i, (n, s, e)) in l.iter().enumerate() {
             ROOT.files[i] = Some(MemoryFile {

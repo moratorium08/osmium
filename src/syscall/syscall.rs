@@ -45,6 +45,22 @@ pub enum SyscallError {
     TooManyProcess,
     NoMemorySpace,
     InvalidArguments,
+    IllegalFile,
+    NotFound,
+}
+
+impl SyscallError {
+    pub fn to_syscall_result(&self) -> i32 {
+        match self {
+            SyscallError::InvalidSyscallNumber => -1,
+            SyscallError::InternalError => -2,
+            SyscallError::TooManyProcess => -3,
+            SyscallError::NoMemorySpace => -4,
+            SyscallError::InvalidArguments => -5,
+            SyscallError::IllegalFile => -6,
+            SyscallError::NotFound => -7,
+        }
+    }
 }
 
 impl fmt::Display for SyscallError {
@@ -61,6 +77,8 @@ impl SyscallError {
             SyscallError::TooManyProcess => "Too many process",
             SyscallError::NoMemorySpace => "No Memory Space",
             SyscallError::InvalidArguments => "Invalid Arguments",
+            SyscallError::IllegalFile => "Illegal File",
+            SyscallError::NotFound => "Not Found",
         }
     }
 }
@@ -204,10 +222,13 @@ fn execve(
 
     let file = match files::search(name) {
         Some(file) => file,
-        None => panic!("failed to find {}", name), // TODO: kill process
+        None => return Err(SyscallError::NotFound),
     };
 
-    let e = elf::Elf::new(file.bytes).expect("failed to parse ELF"); // TODO: kill process
+    let e = match elf::Elf::new(file.bytes) {
+        Ok(e) => e,
+        Err(_) => return Err(SyscallError::IllegalFile),
+    };
     match k
         .current_process
         .as_mut()
@@ -215,7 +236,7 @@ fn execve(
         .load_elf(&e, &mut k.allocator)
     {
         Ok(()) => (),
-        Err(e) => panic!("failed to load elf: {}", e),
+        Err(e) => return Err(SyscallError::IllegalFile),
     };
     dprintln!("set entry point: {:x}", e.elf.entry);
     let new_tf = trap::TrapFrame::new(e.elf.entry, memlayout::USER_STACK_BOTTOMN);

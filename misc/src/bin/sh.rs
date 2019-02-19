@@ -55,6 +55,7 @@ use core::panic::PanicInfo;
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
+    syscall::sys_exit(1);
     loop {}
 }
 

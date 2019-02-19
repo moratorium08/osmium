@@ -226,11 +226,11 @@ pub extern "C" fn __start_rust() -> ! {
     trap::trap_init();
 
     // sstatus[5] on. after sret, sstatus[5] --> sstatus[1]
-    csr::sstatus::SSTATUS::spie_on();
-    csr::sie::SIE::mtimer_on();
-    csr::sie::SIE::software_on();
-    csr::sip::SIP::timer_off();
-    csr::timer::set_interval(csr::timer::MicroSeccond::new(1));
+    //csr::sstatus::SSTATUS::spie_on();
+    //csr::sie::SIE::mtimer_on();
+    //csr::sie::SIE::software_on();
+    //csr::sip::SIP::timer_off();
+    //csr::timer::set_interval(csr::timer::MicroSeccond::new(1));
 
     println!("ok. Finished kernel booting");
     println!("Let's create an user process");

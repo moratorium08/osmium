@@ -74,3 +74,8 @@ hello_start:
     .incbin "misc/bin/hello"
 .global hello_end
 hello_end:
+.global tic_start
+tic_start:
+    .incbin "misc/bin/tic"
+.global tic_end
+tic_end:

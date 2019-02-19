@@ -277,8 +277,9 @@ pub fn handle_envcall(mut tf: TrapFrame) -> ! {
             kernel.run_into_user()
         }
         Err(e) => {
-            // handle kill process
-            panic!("failed to do syscall: {}", e)
+            tf.regs.set_syscall_result(e.to_syscall_result() as u32);
+            kernel.update_current_process_trap_frame(tf);
+            kernel.run_into_user()
         }
     }
 }

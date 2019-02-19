@@ -1,3 +1,4 @@
+use core::fmt;
 fn syscall_0(num: u32) -> u32 {
     let result: u32;
     unsafe {
@@ -63,6 +64,54 @@ fn syscall_4(num: u32, a: u32, b: u32, c: u32, d: u32) -> u32 {
     result
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum SyscallError {
+    InvalidSyscallNumber,
+    InternalError,
+    TooManyProcess,
+    NoMemorySpace,
+    InvalidArguments,
+    IllegalFile,
+    NotFound,
+}
+
+impl SyscallError {
+    pub fn from_syscall_result(x: i32) -> SyscallError {
+        match x {
+            -1 => SyscallError::InvalidSyscallNumber,
+            -2 => SyscallError::InternalError,
+            -3 => SyscallError::TooManyProcess,
+            -4 => SyscallError::NoMemorySpace,
+            -5 => SyscallError::InvalidArguments,
+            -6 => SyscallError::IllegalFile,
+            
+            -7 => SyscallError::NotFound,
+            _ => panic!("illegal syscall result")
+        }
+    }
+}
+
+impl fmt::Display for SyscallError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+impl SyscallError {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            SyscallError::InvalidSyscallNumber => "Invalid Syscall Number",
+            SyscallError::InternalError => "Internal error",
+            SyscallError::TooManyProcess => "Too many process",
+            SyscallError::NoMemorySpace => "No Memory Space",
+            SyscallError::InvalidArguments => "Invalid Arguments",
+            SyscallError::IllegalFile => "Illegal File",
+            SyscallError::NotFound => "Not Found",
+        }
+    }
+}
+
+
 
 pub fn sys_write(buf: &[u8], size: usize) -> u32 {
     syscall_2(0, buf.as_ptr() as u32, size as u32)
@@ -102,7 +151,12 @@ pub fn sys_fork() -> ForkResult {
 }
 
 pub fn sys_execve(filename: &str, filename_len: u32, argv: &[* const u32], envp: &[* const u32]) -> ! {
-    syscall_4(8, filename.as_bytes().as_ptr() as u32, filename_len, argv.as_ptr() as u32, envp.as_ptr() as u32);
+    let x = syscall_4(8, filename.as_bytes().as_ptr() as u32, filename_len, argv.as_ptr() as u32, envp.as_ptr() as u32);
+    if (x as i32) < 0 {
+        println!("{}", SyscallError::from_syscall_result(x as i32));
+        sys_exit(x)
+    }
+
     loop {}
 }
 
