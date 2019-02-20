@@ -27,7 +27,7 @@ pub extern "C" fn _start() -> ! {
         },
         syscall::ForkResult::Child => {
             println!("I'm a child!! ogya-");
-            syscall::sys_execve("/bin/nop", 3, &[], &[]);
+            syscall::sys_execve("/bin/nop", 8, &[], &[]);
         }
     }
 

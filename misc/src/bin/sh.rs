@@ -12,10 +12,13 @@ use misc::uart;
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     let mut buf = [0u8; 256];
-        println!("hogehogehgoe");
+    println!("** Osh **");
     loop {
         print!("$ ");
         let (len, b) = uart::buffered_readline(&mut buf);
+        if len == 0 {
+            continue;
+        }
         if !b {
             println!("Sorry. too long. Please enter shorter command");
             continue;
@@ -27,6 +30,9 @@ pub extern "C" fn _start() -> ! {
                 continue;
             }
         };
+        if buf[0] == b'e' && buf[1] == b'x' && buf[2] == b'i' && buf[3] == b't'  && len == 4{
+            syscall::sys_exit(0);
+        }
         match syscall::sys_fork() {
             syscall::ForkResult::Parent(id) => {
                 loop {
