@@ -1,4 +1,3 @@
-use super::number;
 use crate::elf;
 use crate::files;
 use crate::kernel;
@@ -10,6 +9,7 @@ use crate::uart;
 use core::fmt;
 use core::slice;
 use core::str;
+use osmium_syscall::number;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Syscall {

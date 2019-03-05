@@ -6,7 +6,7 @@
 
 #[macro_use]
 extern crate bitflags;
-extern crate array_init;
+extern crate osmium_syscall;
 
 #[macro_use]
 pub mod uart;

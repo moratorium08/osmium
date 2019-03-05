@@ -1,7 +1,6 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}
+#![no_main]
+#![feature(asm)]
+#![no_std]
+
+pub mod number;
+
