@@ -6,3 +6,4 @@ authors = ["katsurahiroyuki"]
 [build-dependencies]
 
 [dependencies]
+osmium_syscall = { path = "../syscall" }

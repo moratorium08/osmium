@@ -1,4 +1,6 @@
 use core::fmt;
+use osmium_syscall::number;
+
 fn syscall_0(num: u32) -> u32 {
     let result: u32;
     unsafe {
@@ -84,9 +86,9 @@ impl SyscallError {
             -4 => SyscallError::NoMemorySpace,
             -5 => SyscallError::InvalidArguments,
             -6 => SyscallError::IllegalFile,
-            
+
             -7 => SyscallError::NotFound,
-            _ => panic!("illegal syscall result")
+            _ => panic!("illegal syscall result"),
         }
     }
 }
@@ -111,47 +113,56 @@ impl SyscallError {
     }
 }
 
-
-
 pub fn sys_write(buf: &[u8], size: usize) -> u32 {
-    syscall_2(0, buf.as_ptr() as u32, size as u32)
+    syscall_2(number::SYS_UART_WRITE, buf.as_ptr() as u32, size as u32)
 }
 
-pub fn sys_read(buf: &mut [u8], size: usize) -> u32{
-    syscall_2(1, buf.as_ptr() as u32, size as u32)
+pub fn sys_read(buf: &mut [u8], size: usize) -> u32 {
+    syscall_2(number::SYS_UART_READ, buf.as_ptr() as u32, size as u32)
 }
 
-pub fn sys_exit(status: u32) -> ! { 
-    syscall_1(2, status);
+pub fn sys_exit(status: u32) -> ! {
+    syscall_1(number::SYS_EXIT, status);
     loop {} // here does not reach
 }
 
-pub fn sys_get_proc_id() -> u32 { 
-    syscall_0(4)
+pub fn sys_get_proc_id() -> u32 {
+    syscall_0(number::SYS_GET_PROC_ID)
 }
 
-pub fn sys_yield() -> u32 { 
-    syscall_0(5)
+pub fn sys_yield() -> u32 {
+    syscall_0(number::SYS_YIELD)
 }
 
 pub enum ForkResult {
     Parent(u32),
     Child,
-    Fail
+    Fail,
 }
-pub fn sys_fork() -> ForkResult { 
-    let r = syscall_0(7) as i32;
+pub fn sys_fork() -> ForkResult {
+    let r = syscall_0(number::SYS_FORK) as i32;
     if r < 0 {
         ForkResult::Fail
-    } else if (r == 0) {
+    } else if r == 0 {
         ForkResult::Child
     } else {
         ForkResult::Parent(r as u32)
     }
 }
 
-pub fn sys_execve(filename: &str, filename_len: u32, argv: &[* const u32], envp: &[* const u32]) -> ! {
-    let x = syscall_4(8, filename.as_bytes().as_ptr() as u32, filename_len, argv.as_ptr() as u32, envp.as_ptr() as u32);
+pub fn sys_execve(
+    filename: &str,
+    filename_len: u32,
+    argv: &[*const u32],
+    envp: &[*const u32],
+) -> ! {
+    let x = syscall_4(
+        number::SYS_EXECVE,
+        filename.as_bytes().as_ptr() as u32,
+        filename_len,
+        argv.as_ptr() as u32,
+        envp.as_ptr() as u32,
+    );
     if (x as i32) < 0 {
         println!("{}", SyscallError::from_syscall_result(x as i32));
         sys_exit(x)
@@ -176,12 +187,12 @@ impl ProcessStatus {
             2 => ProcessStatus::Runnable,
             3 => ProcessStatus::NotRunnable,
             4 => ProcessStatus::Zonmbie,
-            _ => panic!("failed to handle process status")
+            _ => panic!("failed to handle process status"),
         }
     }
 }
 
 pub fn sys_check_process_status(id: u32) -> ProcessStatus {
-    let r = syscall_1(9, id);
+    let r = syscall_1(number::SYS_PROC_STATUS, id);
     ProcessStatus::from_u32(r)
 }
