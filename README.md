@@ -5,6 +5,7 @@ Operating System written in Rust on RISC V(32ima)
 ## Rust version
 
 ```
+rustc 1.34.0-nightly (f29b4fbd7 2019-01-31)
 ```
 
 ## 環境設定

@@ -1,5 +1,5 @@
 /target
 **/*.rs.bk
 /tools
-misc/bin/
+**/bin
 **/target

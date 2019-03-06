@@ -1,7 +1,13 @@
 BINS := misc bootloader kernel
 
-all: $(BINS)
+build: $(BINS)
 $(BINS):
-	make -C $@
+	make build -C $@
+.PHONY: build $(BINS)
 
-.PHONY: all $(BINS)
+setup:
+	./scripts/setup.sh
+
+run:
+	./scripts/run.sh
+
