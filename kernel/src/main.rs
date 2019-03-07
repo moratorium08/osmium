@@ -10,6 +10,7 @@ extern crate osmium_syscall;
 
 #[macro_use]
 pub mod uart;
+pub mod bounded_buffer;
 pub mod csr;
 pub mod elf;
 pub mod file;

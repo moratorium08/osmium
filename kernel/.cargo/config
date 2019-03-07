@@ -2,6 +2,3 @@
 rustflags = [
   "-C", "link-arg=-Tlinker.ld",
 ]
-
-[build]
-target = "riscv32imac-unknown-none-elf"

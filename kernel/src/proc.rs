@@ -147,15 +147,14 @@ impl<'a> Process<'a> {
         satp::SATP::set_ppn(self.ppn());
 
         for program in elf_file.programs() {
-            /*dprintln!(
-                "{} -> {}: size {}",
-                program.virt_addr, program.phys_addr, program.mem_size
-            );*/
             self.region_alloc(
                 program.virt_addr,
                 utils::round_up(program.mem_size as u64, paging::PGSIZE as u64) as usize,
-                /*program.flag,*/ // after region alloc, set flag
-                paging::Flag::EXEC | paging::Flag::USER | paging::Flag::READ | paging::Flag::WRITE | paging::Flag::VALID,
+                paging::Flag::EXEC
+                    | paging::Flag::USER
+                    | paging::Flag::READ
+                    | paging::Flag::WRITE
+                    | paging::Flag::VALID,
                 allocator,
             )?;
             let region = program.virt_addr.as_mut_ptr();
