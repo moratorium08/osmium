@@ -64,7 +64,7 @@ impl fmt::Display for ProcessError {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Id(pub u32);
 
 impl Id {
@@ -73,7 +73,7 @@ impl Id {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Message {
     pub id: Id,
     pub data: u32,

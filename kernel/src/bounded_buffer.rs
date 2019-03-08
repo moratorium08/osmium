@@ -41,7 +41,7 @@ impl<T: Sized + Copy> BoundedBuffer<T> {
             return Err(Error::Full);
         }
         self.buffer[self.next_in] = val;
-        self.next_in += 1;
+        self.next_in = count_up(self.next_in);
         Ok(())
     }
     pub fn dequeue(&mut self) -> Result<T, Error> {

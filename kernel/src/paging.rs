@@ -224,11 +224,12 @@ pub enum PageError {
 impl fmt::Display for PageError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FailedToAllocMemory => write!(f, "Failed to alloc memory"),
+            PageError::FailedToAllocMemory => write!(f, "Failed to alloc memory"),
             PageError::ProgramError(ref s) => write!(f, "Program Error: {}", s),
-            MapError => write!(f, "Map error"),
-            AlreadyMapped => write!(f, "Already mapped"),
-            IllegalAddress => write!(f, "Illegal address"),
+            PageError::MapError => write!(f, "Map error"),
+            PageError::AlreadyMapped => write!(f, "Already mapped"),
+            PageError::IllegalAddress => write!(f, "Illegal address"),
+            PageError::PageIsNotMapped => write!(f, "Page is not mapped"),
         }
     }
 }

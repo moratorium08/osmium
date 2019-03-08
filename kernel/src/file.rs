@@ -1,4 +1,3 @@
-#![feature(lang_items)]
 use core::slice;
 use memutil;
 

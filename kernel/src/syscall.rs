@@ -230,7 +230,8 @@ pub fn send_data(id: u32, data: u32, k: &mut kernel::Kernel) -> Result<u32, Sysc
         Ok(ptr) => p = unsafe { &mut *ptr },
         Err(_) => return Err(SyscallError::InvalidArguments),
     }
-    match p.enqueue_message(proc::Id(id), data) {
+    let my_id = k.current_process.as_ref().unwrap().id;
+    match p.enqueue_message(my_id, data) {
         Ok(()) => Ok(0),
         Err(proc::ProcessError::QueueIsFull) => Err(SyscallError::QueueIsFull),
         Err(_) => Err(SyscallError::InternalError),

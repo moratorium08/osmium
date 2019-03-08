@@ -167,8 +167,8 @@ pub struct Message {
 }
 
 pub fn sys_receive() -> Result<Message, SyscallError> {
-    let mut data_store: u32 = 0;
-    let r = syscall_1(number::SYS_RECEIVE, data_store as *const u32 as u32);
+    let mut data_store: u32 = 100;
+    let r = syscall_1(number::SYS_RECEIVE, (&mut data_store) as *mut u32 as u32);
     let r = r as i32;
     if r < 0 {
         Err(SyscallError::from_syscall_result(r))
