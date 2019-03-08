@@ -36,16 +36,3 @@ pub extern "C" fn _start() -> ! {
     println!("Goodbye");
     syscall::sys_exit(0)
 }
-
-use core::panic::PanicInfo;
-#[panic_handler]
-#[no_mangle]
-pub fn panic(info: &PanicInfo) -> ! {
-    syscall::sys_exit(1);
-    loop {}
-}
-
-#[no_mangle]
-pub extern "C" fn abort() -> ! {
-    loop {}
-}

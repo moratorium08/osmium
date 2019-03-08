@@ -24,7 +24,7 @@ temporary_pgdir_ptr:
 
 # (for reserve region. use for page copy between two different memory space)
 .global tmp_reserved_page
-tmp_reserved_page: 
+tmp_reserved_page:
     .skip 4096
 
 .global kernel_frames_ptr
@@ -79,3 +79,8 @@ tic_start:
     .incbin "../misc/bin/tic"
 .global tic_end
 tic_end:
+.global catch_ball_start
+catch_ball_start:
+    .incbin "../misc/bin/catch_ball"
+.global catch_ball_end
+catch_ball_end:

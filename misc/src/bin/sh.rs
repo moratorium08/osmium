@@ -55,17 +55,3 @@ pub extern "C" fn _start() -> ! {
         }
     }
 }
-
-use core::panic::PanicInfo;
-#[panic_handler]
-#[no_mangle]
-pub fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info);
-    syscall::sys_exit(1);
-    loop {}
-}
-
-#[no_mangle]
-pub extern "C" fn abort() -> ! {
-    loop {}
-}

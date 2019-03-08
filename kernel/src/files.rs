@@ -19,6 +19,8 @@ extern "C" {
     static sh_end: u8;
     static tic_start: u8;
     static tic_end: u8;
+    static catch_ball_start: u8;
+    static catch_ball_end: u8;
 /*
 static ls_start: u8;
 static ls_end: u8;
@@ -71,6 +73,7 @@ pub fn init() {
             ("/bin/hello", &hello_start, &hello_end),
             ("/bin/sh", &sh_start, &sh_end),
             ("/bin/tic", &tic_start, &tic_end),
+            ("/bin/catch_ball", &catch_ball_start, &catch_ball_end),
         ];
         for (i, (n, s, e)) in l.iter().enumerate() {
             ROOT.files[i] = Some(MemoryFile {

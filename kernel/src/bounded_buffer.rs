@@ -1,5 +1,5 @@
 #[derive(Debug)]
-enum Error {
+pub enum Error {
     Full,
     Empty,
 }
@@ -7,7 +7,7 @@ enum Error {
 // instant implmentation of bounded buffer
 // this is not thread safe
 const SIZE: usize = 8;
-struct BoundedBuffer<T: Sized + Copy> {
+pub struct BoundedBuffer<T: Sized + Copy> {
     buffer: [T; SIZE],
     next_in: usize,
     next_out: usize,
@@ -23,20 +23,20 @@ fn count_up(v: usize) -> usize {
 }
 
 impl<T: Sized + Copy> BoundedBuffer<T> {
-    fn new(init: T) -> BoundedBuffer<T> {
+    pub fn new(init: T) -> BoundedBuffer<T> {
         BoundedBuffer {
             buffer: [init; SIZE],
             next_in: 0,
             next_out: 0,
         }
     }
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.next_in == self.next_out
     }
-    fn is_full(&self) -> bool {
+    pub fn is_full(&self) -> bool {
         count_up(self.next_in) == self.next_out
     }
-    fn enqueue(&mut self, val: T) -> Result<(), Error> {
+    pub fn enqueue(&mut self, val: T) -> Result<(), Error> {
         if self.is_full() {
             return Err(Error::Full);
         }
@@ -44,7 +44,7 @@ impl<T: Sized + Copy> BoundedBuffer<T> {
         self.next_in += 1;
         Ok(())
     }
-    fn dequeue(&mut self) -> Result<T, Error> {
+    pub fn dequeue(&mut self) -> Result<T, Error> {
         if self.is_empty() {
             return Err(Error::Empty);
         }
@@ -52,7 +52,7 @@ impl<T: Sized + Copy> BoundedBuffer<T> {
         self.next_out = count_up(idx);
         Ok(self.buffer[idx])
     }
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         if self.next_out <= self.next_in {
             self.next_in - self.next_out
         } else {

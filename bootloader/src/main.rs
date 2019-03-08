@@ -255,6 +255,7 @@ pub extern "C" fn __start_rust() -> ! {
     loop {}
 }
 
+#[cfg(not(test))]
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {

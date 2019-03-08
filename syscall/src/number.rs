@@ -8,3 +8,5 @@ pub const SYS_UNMAP: u32 = 6;
 pub const SYS_FORK: u32 = 7;
 pub const SYS_EXECVE: u32 = 8;
 pub const SYS_PROC_STATUS: u32 = 9;
+pub const SYS_SEND: u32 = 10;
+pub const SYS_RECEIVE: u32 = 11;

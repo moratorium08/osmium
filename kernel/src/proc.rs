@@ -1,3 +1,4 @@
+use bounded_buffer as bb;
 use core::fmt;
 use csr::CSRRead;
 use elf;
@@ -40,6 +41,8 @@ pub enum ProcessError {
     FailedToMap(paging::PageError),
     ProgramError(&'static str),
     NoSuchProcess,
+    QueueIsFull,
+    QueueIsEmpty,
 }
 
 impl ProcessError {
@@ -49,6 +52,8 @@ impl ProcessError {
             ProcessError::FailedToMap(_) => "failed to map",
             ProcessError::ProgramError(s) => s,
             ProcessError::NoSuchProcess => "no such process",
+            ProcessError::QueueIsEmpty => "queue is empty",
+            ProcessError::QueueIsFull => "queue is full",
         }
     }
 }
@@ -68,6 +73,12 @@ impl Id {
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct Message {
+    pub id: Id,
+    pub data: u32,
+}
+
 #[repr(C)]
 pub struct Process<'a> {
     pub mapper: paging::Map<'a>,
@@ -78,6 +89,7 @@ pub struct Process<'a> {
     pub status: Status,
     pub trap_frame: trap::TrapFrame,
     pub exit_code: u32,
+    message_queue: bb::BoundedBuffer<Message>,
 }
 
 impl<'a> Process<'a> {
@@ -88,6 +100,7 @@ impl<'a> Process<'a> {
         self.proc_type = Type::User;
         self.status = Status::Free;
         self.trap_frame = trap::TrapFrame::new(0, 0);
+        self.message_queue = bb::BoundedBuffer::new(Message { id, data: 0 });
     }
     // dont touch without ProcessManager
     pub unsafe fn set_index(&mut self, index: usize) {
@@ -192,6 +205,22 @@ impl<'a> Process<'a> {
     pub fn exit(&mut self, exit_code: u32) {
         self.status = Status::Zonmbie;
         self.exit_code = exit_code;
+    }
+
+    pub fn enqueue_message(&mut self, id: Id, data: u32) -> Result<(), ProcessError> {
+        match self.message_queue.enqueue(Message { id, data }) {
+            Ok(()) => Ok(()),
+            Err(bb::Error::Full) => Err(ProcessError::QueueIsFull),
+            Err(bb::Error::Empty) => Err(ProcessError::QueueIsEmpty),
+        }
+    }
+
+    pub fn dequeue_message(&mut self) -> Result<Message, ProcessError> {
+        match self.message_queue.dequeue() {
+            Ok(x) => Ok(x),
+            Err(bb::Error::Full) => Err(ProcessError::QueueIsFull),
+            Err(bb::Error::Empty) => Err(ProcessError::QueueIsEmpty),
+        }
     }
 }
 

@@ -269,6 +269,7 @@ pub extern "C" fn __start_rust() -> ! {
     kernel.run_into_user()
 }
 
+#[cfg(not(test))]
 #[panic_handler]
 #[no_mangle]
 pub fn panic(info: &PanicInfo) -> ! {

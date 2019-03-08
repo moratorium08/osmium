@@ -1,4 +1,5 @@
 use core::fmt;
+use osmium_syscall::errors::SyscallError;
 use osmium_syscall::number;
 
 fn syscall_0(num: u32) -> u32 {
@@ -66,53 +67,6 @@ fn syscall_4(num: u32, a: u32, b: u32, c: u32, d: u32) -> u32 {
     result
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum SyscallError {
-    InvalidSyscallNumber,
-    InternalError,
-    TooManyProcess,
-    NoMemorySpace,
-    InvalidArguments,
-    IllegalFile,
-    NotFound,
-}
-
-impl SyscallError {
-    pub fn from_syscall_result(x: i32) -> SyscallError {
-        match x {
-            -1 => SyscallError::InvalidSyscallNumber,
-            -2 => SyscallError::InternalError,
-            -3 => SyscallError::TooManyProcess,
-            -4 => SyscallError::NoMemorySpace,
-            -5 => SyscallError::InvalidArguments,
-            -6 => SyscallError::IllegalFile,
-
-            -7 => SyscallError::NotFound,
-            _ => panic!("illegal syscall result"),
-        }
-    }
-}
-
-impl fmt::Display for SyscallError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_str())
-    }
-}
-
-impl SyscallError {
-    pub fn to_str(&self) -> &'static str {
-        match self {
-            SyscallError::InvalidSyscallNumber => "Invalid Syscall Number",
-            SyscallError::InternalError => "Internal error",
-            SyscallError::TooManyProcess => "Too many process",
-            SyscallError::NoMemorySpace => "No Memory Space",
-            SyscallError::InvalidArguments => "Invalid Arguments",
-            SyscallError::IllegalFile => "Illegal File",
-            SyscallError::NotFound => "Not Found",
-        }
-    }
-}
-
 pub fn sys_write(buf: &[u8], size: usize) -> u32 {
     syscall_2(number::SYS_UART_WRITE, buf.as_ptr() as u32, size as u32)
 }
@@ -121,8 +75,8 @@ pub fn sys_read(buf: &mut [u8], size: usize) -> u32 {
     syscall_2(number::SYS_UART_READ, buf.as_ptr() as u32, size as u32)
 }
 
-pub fn sys_exit(status: u32) -> ! {
-    syscall_1(number::SYS_EXIT, status);
+pub fn sys_exit(status: i32) -> ! {
+    syscall_1(number::SYS_EXIT, status as u32);
     loop {} // here does not reach
 }
 
@@ -165,7 +119,7 @@ pub fn sys_execve(
     );
     if (x as i32) < 0 {
         println!("{}", SyscallError::from_syscall_result(x as i32));
-        sys_exit(x)
+        sys_exit(x as i32)
     }
 
     loop {}
@@ -195,4 +149,33 @@ impl ProcessStatus {
 pub fn sys_check_process_status(id: u32) -> ProcessStatus {
     let r = syscall_1(number::SYS_PROC_STATUS, id);
     ProcessStatus::from_u32(r)
+}
+
+pub fn sys_send(id: u32, data: u32) -> Result<(), SyscallError> {
+    let r = syscall_2(number::SYS_SEND, id, data);
+    let r = r as i32;
+    if r < 0 {
+        Err(SyscallError::from_syscall_result(r))
+    } else {
+        Ok(())
+    }
+}
+
+pub struct Message {
+    pub id: u32,
+    pub data: u32,
+}
+
+pub fn sys_receive() -> Result<Message, SyscallError> {
+    let mut data_store: u32 = 0;
+    let r = syscall_1(number::SYS_RECEIVE, data_store as *const u32 as u32);
+    let r = r as i32;
+    if r < 0 {
+        Err(SyscallError::from_syscall_result(r))
+    } else {
+        Ok(Message {
+            id: r as u32,
+            data: data_store,
+        })
+    }
 }

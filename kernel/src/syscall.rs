@@ -2,13 +2,12 @@ use crate::elf;
 use crate::files;
 use crate::kernel;
 use crate::memlayout;
-use crate::memutil;
 use crate::proc;
 use crate::trap;
 use crate::uart;
-use core::fmt;
 use core::slice;
 use core::str;
+use osmium_syscall::errors::SyscallError;
 use osmium_syscall::number;
 
 #[derive(Copy, Clone, Debug)]
@@ -36,51 +35,13 @@ pub enum Syscall {
     CheckProcessStatus {
         id: u32,
     },
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum SyscallError {
-    InvalidSyscallNumber,
-    InternalError,
-    TooManyProcess,
-    NoMemorySpace,
-    InvalidArguments,
-    IllegalFile,
-    NotFound,
-}
-
-impl SyscallError {
-    pub fn to_syscall_result(&self) -> i32 {
-        match self {
-            SyscallError::InvalidSyscallNumber => -1,
-            SyscallError::InternalError => -2,
-            SyscallError::TooManyProcess => -3,
-            SyscallError::NoMemorySpace => -4,
-            SyscallError::InvalidArguments => -5,
-            SyscallError::IllegalFile => -6,
-            SyscallError::NotFound => -7,
-        }
-    }
-}
-
-impl fmt::Display for SyscallError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_str())
-    }
-}
-
-impl SyscallError {
-    pub fn to_str(&self) -> &'static str {
-        match self {
-            SyscallError::InvalidSyscallNumber => "Invalid Syscall Number",
-            SyscallError::InternalError => "Internal error",
-            SyscallError::TooManyProcess => "Too many process",
-            SyscallError::NoMemorySpace => "No Memory Space",
-            SyscallError::InvalidArguments => "Invalid Arguments",
-            SyscallError::IllegalFile => "Illegal File",
-            SyscallError::NotFound => "Not Found",
-        }
-    }
+    SendData {
+        id: u32,
+        data: u32,
+    },
+    ReceiveData {
+        data_store: u32,
+    },
 }
 
 impl Syscall {
@@ -108,6 +69,13 @@ impl Syscall {
                 envp: tf.regs.a4(),
             }),
             number::SYS_PROC_STATUS => Ok(Syscall::CheckProcessStatus { id: tf.regs.a1() }),
+            number::SYS_SEND => Ok(Syscall::SendData {
+                id: tf.regs.a1(),
+                data: tf.regs.a2(),
+            }),
+            number::SYS_RECEIVE => Ok(Syscall::ReceiveData {
+                data_store: tf.regs.a1(),
+            }),
             _ => Err(SyscallError::InvalidSyscallNumber),
         }
     }
@@ -256,6 +224,39 @@ pub fn check_process_status(id: u32, k: &mut kernel::Kernel) -> Result<u32, Sysc
     Ok(p.status.to_u32())
 }
 
+pub fn send_data(id: u32, data: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
+    let p: &mut proc::Process;
+    match unsafe { k.process_manager.id2proc(proc::Id(id)) } {
+        Ok(ptr) => p = unsafe { &mut *ptr },
+        Err(_) => return Err(SyscallError::InvalidArguments),
+    }
+    match p.enqueue_message(proc::Id(id), data) {
+        Ok(()) => Ok(0),
+        Err(proc::ProcessError::QueueIsFull) => Err(SyscallError::QueueIsFull),
+        Err(_) => Err(SyscallError::InternalError),
+    }
+}
+
+pub fn receive_data(ptr: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
+    let data_store: Option<&mut u32> = if ptr == 0 {
+        None
+    } else {
+        // TODO: check access validity
+        Some(unsafe { &mut *(ptr as *mut u32) })
+    };
+    match k.current_process.as_mut().unwrap().dequeue_message() {
+        Ok(proc::Message { id, data }) => {
+            match data_store {
+                Some(store) => *store = data,
+                None => (),
+            };
+            Ok(id.to_u32())
+        }
+        Err(proc::ProcessError::QueueIsEmpty) => Err(SyscallError::QueueIsEmpty),
+        Err(_) => Err(SyscallError::InternalError),
+    }
+}
+
 pub fn syscall_dispatch(
     sc: Syscall,
     k: &mut kernel::Kernel,
@@ -276,5 +277,7 @@ pub fn syscall_dispatch(
             envp,
         } => execve(filename, filename_length, argv, envp, tf, k),
         Syscall::CheckProcessStatus { id } => check_process_status(id, k),
+        Syscall::SendData { id, data } => send_data(id, data, k),
+        Syscall::ReceiveData { data_store } => receive_data(data_store, k),
     }
 }
