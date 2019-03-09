@@ -2,13 +2,16 @@ use crate::elf;
 use crate::files;
 use crate::kernel;
 use crate::memlayout;
+use crate::paging;
 use crate::proc;
 use crate::trap;
 use crate::uart;
+use core::convert;
 use core::slice;
 use core::str;
 use osmium_syscall::errors::SyscallError;
 use osmium_syscall::number;
+use osmium_syscall::perm;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Syscall {
@@ -42,6 +45,40 @@ pub enum Syscall {
     ReceiveData {
         data_store: u32,
     },
+    Map {
+        src_id: u32,
+        src_addr: u32,
+        dst_id: u32,
+        dst_addr: u32,
+        perm: u32,
+    },
+}
+
+impl convert::From<proc::ProcessError> for SyscallError {
+    fn from(error: proc::ProcessError) -> Self {
+        match error {
+            proc::ProcessError::FailedToCreateProcess => SyscallError::NoMemorySpace,
+            proc::ProcessError::NoSuchProcess => SyscallError::NotFound,
+            proc::ProcessError::QueueIsEmpty => SyscallError::QueueIsEmpty,
+            proc::ProcessError::QueueIsFull => SyscallError::QueueIsFull,
+            proc::ProcessError::FailedToMap(_) | proc::ProcessError::ProgramError(_) => {
+                SyscallError::InternalError
+            }
+        }
+    }
+}
+
+impl convert::From<paging::PageError> for SyscallError {
+    fn from(error: paging::PageError) -> Self {
+        match error {
+            paging::PageError::FailedToAllocMemory => SyscallError::NoMemorySpace,
+            paging::PageError::PageIsNotMapped => SyscallError::NotFound,
+            paging::PageError::IllegalAddress
+            | paging::PageError::MapError
+            | paging::PageError::AlreadyMapped
+            | paging::PageError::ProgramError(_) => SyscallError::InternalError,
+        }
+    }
 }
 
 impl Syscall {
@@ -75,6 +112,13 @@ impl Syscall {
             }),
             number::SYS_RECEIVE => Ok(Syscall::ReceiveData {
                 data_store: tf.regs.a1(),
+            }),
+            number::SYS_MMAP => Ok(Syscall::Map {
+                src_id: tf.regs.a1(),
+                src_addr: tf.regs.a2(),
+                dst_id: tf.regs.a3(),
+                dst_addr: tf.regs.a4(),
+                perm: tf.regs.a5(),
             }),
             _ => Err(SyscallError::InvalidSyscallNumber),
         }
@@ -212,24 +256,16 @@ fn execve(
     Ok(0)
 }
 
-pub fn check_process_status(id: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
-    let p: &mut proc::Process;
-    match unsafe { k.process_manager.id2proc(proc::Id(id)) } {
-        Ok(ptr) => p = unsafe { &mut *ptr },
-        Err(_) => return Err(SyscallError::InvalidArguments),
-    }
+fn check_process_status(id: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
+    let p: &mut proc::Process = k.process_manager.id2proc(proc::Id(id))?;
     if p.parent_id != k.current_process.as_ref().unwrap().id {
         return Err(SyscallError::InvalidArguments);
     }
     Ok(p.status.to_u32())
 }
 
-pub fn send_data(id: u32, data: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
-    let p: &mut proc::Process;
-    match unsafe { k.process_manager.id2proc(proc::Id(id)) } {
-        Ok(ptr) => p = unsafe { &mut *ptr },
-        Err(_) => return Err(SyscallError::InvalidArguments),
-    }
+fn send_data(id: u32, data: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
+    let p = k.process_manager.id2proc(proc::Id(id))?;
     let my_id = k.current_process.as_ref().unwrap().id;
     match p.enqueue_message(my_id, data) {
         Ok(()) => Ok(0),
@@ -238,7 +274,7 @@ pub fn send_data(id: u32, data: u32, k: &mut kernel::Kernel) -> Result<u32, Sysc
     }
 }
 
-pub fn receive_data(ptr: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
+fn receive_data(ptr: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
     let data_store: Option<&mut u32> = if ptr == 0 {
         None
     } else {
@@ -256,6 +292,66 @@ pub fn receive_data(ptr: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallErro
         Err(proc::ProcessError::QueueIsEmpty) => Err(SyscallError::QueueIsEmpty),
         Err(_) => Err(SyscallError::InternalError),
     }
+}
+
+impl convert::From<perm::Perm> for paging::Flag {
+    fn from(flag: perm::Perm) -> Self {
+        let mut result = paging::Flag::empty();
+        if flag.contains(perm::Perm::READ) {
+            result |= paging::Flag::READ;
+        }
+        if flag.contains(perm::Perm::WRITE) {
+            result |= paging::Flag::WRITE;
+        }
+        if flag.contains(perm::Perm::EXEC) {
+            result |= paging::Flag::EXEC;
+        }
+        result
+    }
+}
+
+fn mmap(
+    src_id: u32,
+    src_addr: u32,
+    dst_id: u32,
+    dst_addr: u32,
+    perm_bits: u32,
+    k: &mut kernel::Kernel,
+) -> Result<u32, SyscallError> {
+    let src_p = k.process_manager.id2proc(proc::Id(src_id))?;
+    let dst_p = k.process_manager.id2proc(proc::Id(dst_id))?;
+    let src_addr = paging::VirtAddr::new(src_addr);
+    let dst_addr = paging::VirtAddr::new(dst_addr);
+    let p: perm::Perm = match perm::Perm::from_bits(perm_bits) {
+        Some(x) => Ok(x),
+        None => Err(SyscallError::InternalError),
+    }?;
+
+    let flag = paging::Flag::from(p);
+
+    if !src_p.mapper.check_perm(src_addr, flag) {
+        return Err(SyscallError::PermissionDenied);
+    }
+
+    if !src_addr.is_page_aligned() {
+        return Err(SyscallError::InvalidAlignment);
+    }
+
+    if !dst_addr.is_page_aligned() {
+        return Err(SyscallError::InvalidAlignment);
+    }
+
+    let src_page = paging::Page::from_addr(src_addr);
+    let frame = src_p.mapper.frame(src_page)?;
+
+    let dst_page = paging::Page::from_addr(dst_addr);
+    dst_p.mapper.map(
+        dst_page,
+        frame,
+        flag | paging::Flag::VALID | paging::Flag::USER,
+        &mut k.allocator,
+    )?;
+    Ok(0)
 }
 
 pub fn syscall_dispatch(
@@ -280,5 +376,12 @@ pub fn syscall_dispatch(
         Syscall::CheckProcessStatus { id } => check_process_status(id, k),
         Syscall::SendData { id, data } => send_data(id, data, k),
         Syscall::ReceiveData { data_store } => receive_data(data_store, k),
+        Syscall::Map {
+            src_id,
+            src_addr,
+            dst_id,
+            dst_addr,
+            perm,
+        } => mmap(src_id, src_addr, dst_id, dst_addr, perm, k),
     }
 }

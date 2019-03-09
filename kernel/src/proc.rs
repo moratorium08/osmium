@@ -256,10 +256,12 @@ impl<'a> ProcessManager<'a> {
         }
     }
 
-    pub unsafe fn id2proc(&mut self, id: Id) -> Result<*mut Process<'a>, ProcessError> {
+    pub fn id2proc(&mut self, id: Id) -> Result<&'a mut Process<'a>, ProcessError> {
         for i in 0..N_PROCS {
             if self.procs[i].id == id {
-                return Ok((&mut self.procs[id.0 as usize]) as *mut Process<'a>);
+                let ptr = (&mut self.procs[id.0 as usize]) as *mut Process<'a>;
+                let p = unsafe { &mut *ptr };
+                return Ok(p);
             }
         }
         Err(ProcessError::NoSuchProcess)

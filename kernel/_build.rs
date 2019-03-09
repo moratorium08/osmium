@@ -7,15 +7,10 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() -> Result<(), Box<Error>> {
-
-    Build::new()
-        .file("boot.s")
-        .compile("asm");
+    Build::new().file("boot.s").compile("asm");
 
     Command::new("../tools/bin/elf2bin")
-        .args(
-            &["bin/osmium", "bin/osmium.bin"]
-        )
+        .args(&["bin/osmium", "bin/osmium.bin"])
         .status()?;
 
     Ok(())

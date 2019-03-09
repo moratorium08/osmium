@@ -78,8 +78,17 @@ impl VirtAddr {
     pub fn new(addr: u32) -> VirtAddr {
         VirtAddr(addr)
     }
+
     pub fn page_start_addr(&self) -> u32 {
         self.0 & 0xfffff000
+    }
+
+    pub fn to_page_base(self) -> VirtAddr {
+        VirtAddr(self.page_start_addr())
+    }
+
+    pub fn is_page_aligned(&self) -> bool {
+        (self.0 & 0xfff) == 0
     }
 
     pub fn as_mut_ptr<T>(self) -> *mut T {
@@ -526,9 +535,15 @@ impl<'a> Map<'a> {
         Ok(entry)
     }
 
+    // TODO: should not be mut. Make get_next_table_with_no_page for no mut table lookup function.
     pub fn flag(&mut self, page: Page) -> Result<Flag, PageError> {
         let entry = self.get_table_entry(page)?;
         Ok(entry.flag())
+    }
+
+    pub fn frame(&mut self, page: Page) -> Result<Frame, PageError> {
+        let entry = self.get_table_entry(page)?;
+        Ok(entry.frame())
     }
 
     pub fn clone_page(&mut self, page: Page, allocator: &mut Allocator) -> Result<(), PageError> {

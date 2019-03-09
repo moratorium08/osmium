@@ -1,5 +1,3 @@
-use core::fmt::Write;
-
 const MTIME_COMP_HI: *mut u32 = 0x8000100C as *mut u32;
 const MTIME_COMP_LO: *mut u32 = 0x80001008 as *mut u32;
 
@@ -27,6 +25,7 @@ pub fn set_interval(ns: MicroSeccond) {
     write_mtime_comp(current + clk);
 }
 
+#[allow(dead_code)]
 fn read_mtime_comp() -> u64 {
     unsafe { ({ *MTIME_COMP_HI } as u64) << 32 | ({ *MTIME_COMP_LO } as u64) }
 }
@@ -44,7 +43,8 @@ fn write_mtime_comp(x: u64) {
     }
 }
 
-fn write_write(x: u64) {
+#[allow(dead_code)]
+fn write_mtime(x: u64) {
     let hi = (x >> 32) as u32;
     let lo = (x & 0xffffffff) as u32;
     unsafe {

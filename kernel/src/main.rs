@@ -81,53 +81,6 @@ fn boot_alloc<'a>() -> (u64, BootAlloc<'a>) {
 }
 
 #[no_mangle]
-pub extern "C" fn boot_time_trap_handler() -> ! {
-    let sepc: u32;
-    let scause: u32;
-    let stval: u32;
-    let sstatus: u32;
-    let sie: u32;
-    let sp: u32;
-    unsafe {
-        asm!(
-            "
-        csrrs $0, sepc, x0\n
-        csrrs $1, scause, x0\n
-        csrrs $2, stval, x0\n
-        csrrs $3, sstatus, x0\n
-        csrrs $4, sie, x0\n
-        mv $5, sp\n
-    "
-        : "=&r"(sepc), "=&r"(scause), "=&r"(stval), "=&r"(sstatus), "=&r"(sie), "=&r"(sp)
-            );
-    }
-    println!(
-        "[store]sepc = {:x}, scause = {:x}, stval = {:x}\nsstatus = {:x}, sie = {:x}, sp = {:x}",
-        sepc, scause, stval, sstatus, sie, sp
-    );
-    if scause == (1 << 17) {
-        unsafe {
-            asm!("sret");
-        }
-    }
-
-    panic!("boot error. bye")
-}
-
-fn setup_boot_time_trap() {
-    unsafe {
-        asm!(
-            "
-        lui     a0, %hi(boot_time_trap_handler)
-        addi    a0, a0, %lo(boot_time_trap_handler)
-        slli    a0, a0, 2\n
-        csrrs   x0, stvec, a0\n
-        "
-        );
-    }
-}
-
-#[no_mangle]
 pub extern "C" fn __start_rust() -> ! {
     // setup kernel page table
     let kern_pgdir =

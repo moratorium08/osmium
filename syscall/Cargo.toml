@@ -5,3 +5,4 @@ authors = ["moratorium08 <moratorium08@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+bitflags = "1.0.4"

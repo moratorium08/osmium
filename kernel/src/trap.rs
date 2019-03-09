@@ -1,6 +1,6 @@
 use core::fmt;
 use csr;
-use csr::{CSRRead, CSRWrite};
+use csr::CSRRead;
 use kernel;
 use paging;
 use proc;
@@ -465,19 +465,17 @@ pub unsafe fn pop_trap_frame(tf: &TrapFrame) -> ! {
     let sstatus: u32;
     let sie: u32;
     let sp: u32;
-    unsafe {
-        asm!(
-            "
-        csrrs $0, sepc, x0\n
-        csrrs $1, scause, x0\n
-        csrrs $2, stval, x0\n
-        csrrs $3, sstatus, x0\n
-        csrrs $4, sie, x0\n
-        mv $5, sp\n
-    "
-        : "=&r"(sepc), "=&r"(scause), "=&r"(stval), "=&r"(sstatus), "=&r"(sie), "=&r"(sp)
-            );
-    }
+    asm!(
+        "
+    csrrs $0, sepc, x0\n
+    csrrs $1, scause, x0\n
+    csrrs $2, stval, x0\n
+    csrrs $3, sstatus, x0\n
+    csrrs $4, sie, x0\n
+    mv $5, sp\n
+"
+    : "=&r"(sepc), "=&r"(scause), "=&r"(stval), "=&r"(sstatus), "=&r"(sie), "=&r"(sp)
+        );
     dprintln!(
         "[store]sepc = {:x}, scause = {:x}, stval = {:x}\nsstatus = {:x}, sie = {:x}, sp = {:x}",
         sepc,

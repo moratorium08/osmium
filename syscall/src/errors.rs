@@ -12,6 +12,8 @@ pub enum SyscallError {
     Unknown,
     QueueIsEmpty,
     QueueIsFull,
+    PermissionDenied,
+    InvalidAlignment,
 }
 
 impl SyscallError {
@@ -27,6 +29,8 @@ impl SyscallError {
             SyscallError::Unknown => -8,
             SyscallError::QueueIsEmpty => -9,
             SyscallError::QueueIsFull => -10,
+            SyscallError::PermissionDenied => -11,
+            SyscallError::InvalidAlignment => -12,
         }
     }
 
@@ -42,6 +46,8 @@ impl SyscallError {
             -8 => SyscallError::Unknown,
             -9 => SyscallError::QueueIsEmpty,
             -10 => SyscallError::QueueIsFull,
+            -11 => SyscallError::PermissionDenied,
+            -12 => SyscallError::InvalidAlignment,
             _ => SyscallError::Unknown,
         }
     }
@@ -59,13 +65,15 @@ impl SyscallError {
             SyscallError::InvalidSyscallNumber => "Invalid Syscall Number",
             SyscallError::InternalError => "Internal error",
             SyscallError::TooManyProcess => "Too many process",
-            SyscallError::NoMemorySpace => "No Memory Space",
-            SyscallError::InvalidArguments => "Invalid Arguments",
-            SyscallError::IllegalFile => "Illegal File",
+            SyscallError::NoMemorySpace => "No memory space",
+            SyscallError::InvalidArguments => "Invalid arguments",
+            SyscallError::IllegalFile => "Illegal file",
             SyscallError::NotFound => "Not Found",
             SyscallError::Unknown => "Unknown",
-            SyscallError::QueueIsEmpty => "QueueIsEmpty",
-            SyscallError::QueueIsFull => "QueueIsFull",
+            SyscallError::QueueIsEmpty => "Queue is empty",
+            SyscallError::QueueIsFull => "Queue is full",
+            SyscallError::PermissionDenied => "Permission denied",
+            SyscallError::InvalidAlignment => "Invalid alignment",
         }
     }
 }
