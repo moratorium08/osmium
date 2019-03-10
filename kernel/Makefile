@@ -10,7 +10,7 @@ binary:
 
 elf2bin: binary
 	$(BIN)/elf2bin bin/osmium bin/osmium.bin
-	python append_length.py
+	python3 append_length.py
 
 .PHONY: elf2bin
 

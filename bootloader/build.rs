@@ -5,7 +5,7 @@ use std::error::Error;
 
 fn main() -> Result<(), Box<Error>> {
 
-    Build::new().file("boot.s").compile("asm");
+    Build::new().file("boot.s").flag("-mabi=ilp32").compile("asm");
 
     Ok(())
 }
