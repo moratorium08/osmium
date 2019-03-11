@@ -1,5 +1,7 @@
 /target
 **/*.rs.bk
 /tools
-**/bin
+misc/bin
+kernel/bin
+bootloader/bin
 **/target
