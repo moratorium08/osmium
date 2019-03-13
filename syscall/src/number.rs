@@ -10,3 +10,5 @@ pub const SYS_EXECVE: u32 = 8;
 pub const SYS_PROC_STATUS: u32 = 9;
 pub const SYS_SEND: u32 = 10;
 pub const SYS_RECEIVE: u32 = 11;
+pub const SYS_ALLOC: u32 = 12;
+pub const SYS_FREE: u32 = 13;

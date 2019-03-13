@@ -1,8 +1,10 @@
 BINS := misc bootloader kernel
+BUILD_CONTAINER = moratorium08/osmium:develop
 
 build: $(BINS)
 $(BINS):
-	make build -C $@
+	echo `pwd`
+	CARGO_HOME=`pwd`/.cargo make build -C $@
 .PHONY: build $(BINS)
 
 setup:
@@ -11,3 +13,6 @@ setup:
 run:
 	./scripts/run.sh
 
+# build by using Docker
+d_build:
+	docker run -w $(PWD) -v $(PWD):$(PWD) -it ${BUILD_CONTAINER} make build

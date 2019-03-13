@@ -1,6 +1,7 @@
 use core::fmt;
 use osmium_syscall::errors::SyscallError;
 use osmium_syscall::number;
+use osmium_syscall::perm;
 
 fn syscall_0(num: u32) -> u32 {
     let result: u32;
@@ -62,6 +63,19 @@ fn syscall_4(num: u32, a: u32, b: u32, c: u32, d: u32) -> u32 {
         "
         : "={x10}"(result)
         : "{x10}"(num), "{x11}"(a), "{x12}"(b), "{x13}"(c), "{x14}"(d)
+        );
+    }
+    result
+}
+
+fn syscall_5(num: u32, a: u32, b: u32, c: u32, d: u32, e: u32) -> u32 {
+    let result: u32;
+    unsafe {
+        asm!("
+            ecall
+        "
+        : "={x10}"(result)
+        : "{x10}"(num), "{x11}"(a), "{x12}"(b), "{x13}"(c), "{x14}"(d), "{x15}"(e)
         );
     }
     result
@@ -177,5 +191,49 @@ pub fn sys_receive() -> Result<Message, SyscallError> {
             id: r as u32,
             data: data_store,
         })
+    }
+}
+
+pub fn sys_mmap(
+    src_id: u32,
+    src_addr: u32,
+    dst_id: u32,
+    dst_addr: u32,
+    perm: perm::Perm,
+) -> Result<(), SyscallError> {
+    let r = syscall_5(
+        number::SYS_MMAP,
+        src_id,
+        src_addr,
+        dst_id,
+        dst_addr,
+        perm.bits(),
+    ) as i32;
+    if r < 0 {
+        Err(SyscallError::from_syscall_result(r))
+    } else {
+        Ok(())
+    }
+}
+
+pub fn sys_alloc(addr: Option<u32>, size: u32, perm: perm::Perm) -> Result<u32, SyscallError> {
+    let addr_raw = match addr {
+        Some(x) => x,
+        None => 0,
+    };
+    let r = syscall_3(number::SYS_ALLOC, addr_raw, size, perm.bits()) as i32;
+    if r < 0 && r > -4096 {
+        Err(SyscallError::from_syscall_result(r))
+    } else {
+        Ok(r as u32)
+    }
+}
+
+pub fn sys_free(addr: u32, size: u32) -> Result<(), SyscallError> {
+    let r = syscall_2(number::SYS_FREE, addr, size) as i32;
+    if r < 0 {
+        Err(SyscallError::from_syscall_result(r))
+    } else {
+        Ok(())
     }
 }

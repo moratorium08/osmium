@@ -52,6 +52,15 @@ pub enum Syscall {
         dst_addr: u32,
         perm: u32,
     },
+    Alloc {
+        addr: u32,
+        size: u32,
+        perm: u32,
+    },
+    Free {
+        addr: u32,
+        size: u32,
+    },
 }
 
 impl convert::From<proc::ProcessError> for SyscallError {
@@ -76,7 +85,8 @@ impl convert::From<paging::PageError> for SyscallError {
             paging::PageError::IllegalAddress
             | paging::PageError::MapError
             | paging::PageError::AlreadyMapped
-            | paging::PageError::ProgramError(_) => SyscallError::InternalError,
+            | paging::PageError::ProgramError(_)
+            | paging::PageError::NoMemory => SyscallError::InternalError,
         }
     }
 }
@@ -119,6 +129,15 @@ impl Syscall {
                 dst_id: tf.regs.a3(),
                 dst_addr: tf.regs.a4(),
                 perm: tf.regs.a5(),
+            }),
+            number::SYS_ALLOC => Ok(Syscall::Alloc {
+                addr: tf.regs.a1(),
+                size: tf.regs.a2(),
+                perm: tf.regs.a3(),
+            }),
+            number::SYS_FREE => Ok(Syscall::Free {
+                addr: tf.regs.a1(),
+                size: tf.regs.a2(),
             }),
             _ => Err(SyscallError::InvalidSyscallNumber),
         }
@@ -318,6 +337,10 @@ fn mmap(
     perm_bits: u32,
     k: &mut kernel::Kernel,
 ) -> Result<u32, SyscallError> {
+    println!(
+        "mmap: {} {} {} {} {}",
+        src_id, src_addr, dst_id, dst_addr, perm_bits
+    );
     let src_p = k.process_manager.id2proc(proc::Id(src_id))?;
     let dst_p = k.process_manager.id2proc(proc::Id(dst_id))?;
     let src_addr = paging::VirtAddr::new(src_addr);
@@ -341,17 +364,57 @@ fn mmap(
         return Err(SyscallError::InvalidAlignment);
     }
 
-    let src_page = paging::Page::from_addr(src_addr);
-    let frame = src_p.mapper.frame(src_page)?;
+    let frame: paging::Frame;
 
-    let dst_page = paging::Page::from_addr(dst_addr);
-    dst_p.mapper.map(
-        dst_page,
-        frame,
+    address_space!(src_p, {
+        let src_page = paging::Page::from_addr(src_addr);
+        frame = src_p.mapper.frame(src_page)?;
+    });
+
+    address_space!(dst_p, {
+        let dst_page = paging::Page::from_addr(dst_addr);
+        dst_p.mapper.map(
+            dst_page,
+            frame,
+            flag | paging::Flag::VALID | paging::Flag::USER,
+            &mut k.allocator,
+        )?;
+    });
+    Ok(0)
+}
+
+fn alloc(
+    addr: u32,
+    size: u32,
+    perm_bits: u32,
+    k: &mut kernel::Kernel,
+) -> Result<u32, SyscallError> {
+    let addr = if addr == 0 {
+        k.current_process
+            .as_ref()
+            .unwrap()
+            .mapper
+            .search_free_addr(size)?
+    } else {
+        paging::VirtAddr::new(addr)
+    };
+    let size = size as u32;
+    let p = match perm::Perm::from_bits(perm_bits) {
+        Some(x) => Ok(x),
+        None => Err(SyscallError::InternalError),
+    }?;
+    let flag = paging::Flag::from(p);
+    k.current_process.as_mut().unwrap().mapper.alloc(
+        addr,
+        size,
         flag | paging::Flag::VALID | paging::Flag::USER,
         &mut k.allocator,
     )?;
-    Ok(0)
+    Ok(addr.to_u32())
+}
+
+fn free(addr: u32, size: u32, k: &mut kernel::Kernel) -> Result<u32, SyscallError> {
+    unimplemented!()
 }
 
 pub fn syscall_dispatch(
@@ -383,5 +446,7 @@ pub fn syscall_dispatch(
             dst_addr,
             perm,
         } => mmap(src_id, src_addr, dst_id, dst_addr, perm, k),
+        Syscall::Alloc { addr, size, perm } => alloc(addr, size, perm, k),
+        Syscall::Free { addr, size } => free(addr, size, k),
     }
 }

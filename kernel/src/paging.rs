@@ -13,6 +13,7 @@ pub const PAGE_ENTRY_SIZE: usize = 4;
 pub const N_PAGE_ENTRY: usize = PGSIZE / PAGE_ENTRY_SIZE;
 pub const TMP_PAGE_ENTRY: usize = N_PAGE_ENTRY - 1;
 pub const USER_MEMORY_BASE: usize = 0x80400000;
+pub const USER_MEMORY_SIZE: usize = (usize::max_value() - USER_MEMORY_BASE) + 1;
 
 extern "C" {
     static tmp_reserved_page: u8;
@@ -94,6 +95,12 @@ impl VirtAddr {
     pub fn as_mut_ptr<T>(self) -> *mut T {
         let addr = self.0;
         let addr: *mut T = addr as *mut T;
+        addr
+    }
+
+    pub fn as_ptr<T>(self) -> *const T {
+        let addr = self.0;
+        let addr: *const T = addr as *const T;
         addr
     }
 
@@ -228,6 +235,7 @@ pub enum PageError {
     AlreadyMapped,
     IllegalAddress,
     PageIsNotMapped,
+    NoMemory,
 }
 
 impl fmt::Display for PageError {
@@ -239,6 +247,7 @@ impl fmt::Display for PageError {
             PageError::AlreadyMapped => write!(f, "Already mapped"),
             PageError::IllegalAddress => write!(f, "Illegal address"),
             PageError::PageIsNotMapped => write!(f, "Page is not mapped"),
+            PageError::NoMemory => write!(f, "No memory"),
         }
     }
 }
@@ -341,9 +350,13 @@ impl PageTable {
 
 impl fmt::Display for PageTable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        const ROW: usize = 16;
         for i in 0..N_PAGE_ENTRY {
+            if i % ROW == 0 {
+                write!(f, "{}: ", i);
+            }
             write!(f, "{} ", self.entries[i])?;
-            if i % 8 == 7 {
+            if i % ROW == (ROW - 1) {
                 write!(f, "\n")?;
             }
         }
@@ -443,14 +456,24 @@ impl<'a> Map<'a> {
         unsafe { &mut (*ptr) }
     }
 
-    fn get_next_table(&mut self, page: Page) -> Result<&'a mut PageTable, PageError> {
+    fn get_next_table_mut(&mut self, page: Page) -> Result<&'a mut PageTable, PageError> {
         let entry = &mut self.dir[page.vpn1() as usize];
-        let tmp_entry = &mut self.tmp_page[page.vpn1() as usize];
         if !entry.is_valid() {
             Err(PageError::PageIsNotMapped)
         } else {
             let ptr = Map::vpn1_page(page).base_addr().as_mut_ptr();
             let table: &mut PageTable = unsafe { &mut (*ptr) };
+            Ok(table)
+        }
+    }
+
+    pub fn get_next_table(&self, page: Page) -> Result<&'a PageTable, PageError> {
+        let entry = &self.dir[page.vpn1() as usize];
+        if !entry.is_valid() {
+            Err(PageError::PageIsNotMapped)
+        } else {
+            let ptr = Map::vpn1_page(page).base_addr().as_ptr();
+            let table: &PageTable = unsafe { &(*ptr) };
             Ok(table)
         }
     }
@@ -529,19 +552,18 @@ impl<'a> Map<'a> {
         self.map_inner(page, frame, flag, allocator, false)
     }
 
-    fn get_table_entry(&mut self, page: Page) -> Result<&'a mut PageTableEntry, PageError> {
+    fn get_table_entry(&self, page: Page) -> Result<&'a PageTableEntry, PageError> {
         let vpn1 = self.get_next_table(page)?;
-        let entry = &mut vpn1[page.vpn0() as usize];
+        let entry = &vpn1[page.vpn0() as usize];
         Ok(entry)
     }
 
-    // TODO: should not be mut. Make get_next_table_with_no_page for no mut table lookup function.
-    pub fn flag(&mut self, page: Page) -> Result<Flag, PageError> {
+    pub fn flag(&self, page: Page) -> Result<Flag, PageError> {
         let entry = self.get_table_entry(page)?;
         Ok(entry.flag())
     }
 
-    pub fn frame(&mut self, page: Page) -> Result<Frame, PageError> {
+    pub fn frame(&self, page: Page) -> Result<Frame, PageError> {
         let entry = self.get_table_entry(page)?;
         Ok(entry.frame())
     }
@@ -586,10 +608,40 @@ impl<'a> Map<'a> {
 
     fn unmap(&mut self, page: Page) -> Result<(), PageError> {
         // TODO do frame handling(if frame user is none, dealloc it)
-        let vpn1 = self.get_next_table(page)?;
+        let vpn1 = self.get_next_table_mut(page)?;
         let entry = &mut vpn1[page.vpn0() as usize];
         entry.unset_frame();
         Ok(())
+    }
+
+    pub fn alloc(
+        &mut self,
+        virt_addr: VirtAddr,
+        size: u32,
+        flag: Flag,
+        allocator: &mut Allocator,
+    ) -> Result<(), PageError> {
+        for page in Page::range(virt_addr, size) {
+            let frame = allocator.alloc()?;
+            self.map(page, frame, flag, allocator)?;
+            let table = self.get_next_table(page)?;
+            // println!("{}", table);
+        }
+        Ok(())
+    }
+
+    pub fn dump(&self) {
+        println!("dir: \n{}", self.dir);
+        println!("tmp: \n{}", self.tmp_page);
+    }
+
+    pub fn free(
+        &mut self,
+        virt_addr: VirtAddr,
+        size: u32,
+        allocator: &mut Allocator,
+    ) -> Result<(), PageError> {
+        unimplemented!()
     }
 
     fn map_region_inner(
@@ -620,6 +672,28 @@ impl<'a> Map<'a> {
             )?;
         }
         Ok(())
+    }
+
+    fn is_free(&self, page: Page, size: u32) -> bool {
+        for page in Page::range(page.base_addr(), size) {
+            match self.flag(page) {
+                Ok(flag) if !flag.contains(Flag::VALID) => return false,
+                Err(PageError::PageIsNotMapped) | Ok(_) => (),
+                Err(_) => return false,
+            }
+        }
+        true
+    }
+
+    pub fn search_free_addr(&self, size: u32) -> Result<VirtAddr, PageError> {
+        let top_addr = VirtAddr::new(USER_MEMORY_BASE as u32);
+        // a little dirty (should not be 're'-checked the same page which has been done already)
+        for page in Page::range(top_addr, (USER_MEMORY_SIZE - PGSIZE) as u32) {
+            if self.is_free(page, size) {
+                return Ok(page.base_addr());
+            }
+        }
+        Err(PageError::NoMemory)
     }
 
     pub fn identity_map(
@@ -678,4 +752,17 @@ impl<'a> Map<'a> {
         let pte_flag = pte.flag();
         pte_flag.contains(flag)
     }
+}
+
+#[macro_export]
+macro_rules! address_space {
+    ($process:expr, $e: expr) => {{
+        use csr::CSRRead;
+        let old_satp = $crate::satp::SATP::read_csr();
+        $crate::satp::SATP::set_ppn($process.ppn());
+        {
+            $e;
+        }
+        $crate::satp::SATP::set_ppn(old_satp);
+    }};
 }

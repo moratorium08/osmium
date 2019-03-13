@@ -18,6 +18,7 @@ pub mod files;
 pub mod kernel;
 pub mod memlayout;
 pub mod memutil;
+#[macro_use]
 pub mod paging;
 pub mod proc;
 pub mod syscall;

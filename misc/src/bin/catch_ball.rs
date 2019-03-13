@@ -6,8 +6,10 @@
 extern crate misc;
 extern crate osmium_syscall;
 
+use core::slice;
 use misc::syscall;
 use osmium_syscall::errors::SyscallError;
+use osmium_syscall::perm;
 
 fn blocking_receive() -> Result<syscall::Message, SyscallError> {
     //println!("blocking_receive");
@@ -58,6 +60,31 @@ fn parent(child_id: u32) -> Result<(), SyscallError> {
     for i in 0..SIZE {
         println!("{}: {}", i, data[i]);
     }
+    println!("let's start sharing page");
+
+    // first, create memory region.
+    let addr = syscall::sys_alloc(None, 4096 * 2, perm::Perm::READ | perm::Perm::WRITE)?;
+    println!("addr: {}", addr);
+
+    // second, memory map between the parent and its child
+    syscall::sys_mmap(
+        my_id,
+        addr,
+        child_id,
+        addr,
+        perm::Perm::READ | perm::Perm::WRITE,
+    )?;
+
+    // then, notify the address where they use
+    syscall::sys_send(child_id, addr)?;
+
+    // start communicating.
+    let data = unsafe { slice::from_raw_parts_mut(addr as *mut u32, 4096 * 2 / 4) };
+    data[0] = 100;
+    //data[1024] = 100;
+    // notify the timing
+    syscall::sys_send(child_id, addr)?;
+    let _ = receive_from_id(child_id)?;
     Ok(())
 }
 
@@ -65,7 +92,7 @@ fn child() -> Result<(), SyscallError> {
     let id = syscall::sys_receive()?.data;
     // should check id is my parent
     let mut data = [1; SIZE];
-    loop {
+    for _ in 0..5 {
         for i in 0..SIZE {
             let v = receive_from_id(id)?;
             data[i] = v + 1;
@@ -74,6 +101,18 @@ fn child() -> Result<(), SyscallError> {
             blocking_send(id, *x)?;
         }
     }
+
+    let addr = receive_from_id(id)?;
+    println!("child addr: {}", addr);
+    let data = unsafe { slice::from_raw_parts_mut(addr as *mut u32, 4096 / 4) };
+
+    // wait for update
+    let _ = receive_from_id(id)?;
+    println!("data[0] = {}", data[0]);
+
+    syscall::sys_send(id, addr)?;
+
+    Ok(())
 }
 
 #[no_mangle]

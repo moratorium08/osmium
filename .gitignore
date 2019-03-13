@@ -5,3 +5,4 @@ misc/bin
 kernel/bin
 bootloader/bin
 **/target
+.cargo/
