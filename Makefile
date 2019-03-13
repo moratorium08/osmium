@@ -3,7 +3,6 @@ BUILD_CONTAINER = moratorium08/osmium:develop
 
 build: $(BINS)
 $(BINS):
-	echo `pwd`
 	CARGO_HOME=`pwd`/.cargo make build -C $@
 .PHONY: build $(BINS)
 

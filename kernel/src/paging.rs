@@ -467,7 +467,7 @@ impl<'a> Map<'a> {
         }
     }
 
-    pub fn get_next_table(&self, page: Page) -> Result<&'a PageTable, PageError> {
+    fn get_next_table(&self, page: Page) -> Result<&'a PageTable, PageError> {
         let entry = &self.dir[page.vpn1() as usize];
         if !entry.is_valid() {
             Err(PageError::PageIsNotMapped)
@@ -606,7 +606,7 @@ impl<'a> Map<'a> {
         Ok(())
     }
 
-    fn unmap(&mut self, page: Page) -> Result<(), PageError> {
+    pub fn unmap(&mut self, page: Page) -> Result<(), PageError> {
         // TODO do frame handling(if frame user is none, dealloc it)
         let vpn1 = self.get_next_table_mut(page)?;
         let entry = &mut vpn1[page.vpn0() as usize];

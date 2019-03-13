@@ -13,11 +13,3 @@ pub unsafe fn memcpy(to: *mut u8, from: &[u8], size: usize) {
         buf = (buf as usize + 1) as *mut u8;
     }
 }
-
-pub unsafe fn strlen(mut buf: *const u8) -> usize {
-    let start = buf as usize;
-    while *buf != 0 {
-        buf = (buf as usize + 1) as *const u8;
-    }
-    (buf as usize) - start
-}

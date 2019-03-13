@@ -1,5 +1,8 @@
+#[macro_use]
+extern crate bitflags;
+extern crate rlibc;
+
 use core::slice;
-use memutil;
 
 const BLOCKSIZE: usize = 4096;
 const N_BLOCKS: usize = 100000;
@@ -17,8 +20,9 @@ pub enum FileError {
     NotFound,
     IllegalPath,
 }
+
 bitflags! {
-    pub struct Flag: u8 {
+    pub struct Flag: u16 {
         const USER_READ = 1 << 0;
         const USER_WRITE  = 1 << 1;
         const USER_EXEC = 1 << 2;
@@ -59,7 +63,7 @@ pub enum Data<'a> {
 }
 
 impl<'a> Data<'a> {
-    fn from_ptr(ptr: *mut u8) -> Result<Data<'a>, FileError> {
+    pub fn from_ptr(ptr: *mut u8) -> Result<Data<'a>, FileError> {
         let ty = unsafe { *ptr };
         let t = Type::from_repr(ty)?;
         match t {
@@ -67,7 +71,7 @@ impl<'a> Data<'a> {
             Type::Directory => Ok(Data::Directory(unsafe { &mut *(ptr as *mut Directory) })),
         }
     }
-    fn name(&'a self) -> &'a [u8; 256] {
+    pub fn name(&'a self) -> &'a [u8; 256] {
         match self {
             Data::File(f) => &f.name,
             Data::Directory(f) => &f.name,
@@ -108,7 +112,10 @@ pub struct DirectoryWrapper<'a> {
 }
 
 impl<'a> DirectoryWrapper<'a> {
-    fn new(bm: &'a mut BlockManager, name: [u8; 256]) -> Result<DirectoryWrapper<'a>, FileError> {
+    pub fn new(
+        bm: &'a mut BlockManager,
+        name: [u8; 256],
+    ) -> Result<DirectoryWrapper<'a>, FileError> {
         match bm.alloc_block() {
             Some((index, dir)) => {
                 let d = Directory::from_bytes(dir);
@@ -119,7 +126,7 @@ impl<'a> DirectoryWrapper<'a> {
             None => return Err(FileError::NoSpace),
         }
     }
-    fn add_file(&mut self, fw: &'a FileWrapper) -> Result<(), FileError> {
+    pub fn add_file(&mut self, fw: &'a FileWrapper) -> Result<(), FileError> {
         if self.dir.file_count >= N_POINTER_PER_DIR as u32 {
             return Err(FileError::NoSpace);
         }
@@ -128,11 +135,11 @@ impl<'a> DirectoryWrapper<'a> {
         self.dir.file_count += 1;
         Ok(())
     }
-    fn list_files(&self) -> slice::Iter<Id> {
+    pub fn list_files(&self) -> slice::Iter<Id> {
         (&self.dir.files).iter()
     }
 
-    fn from(dir: &'a mut Directory, index: Id) -> DirectoryWrapper<'a> {
+    pub fn from(dir: &'a mut Directory, index: Id) -> DirectoryWrapper<'a> {
         DirectoryWrapper { dir, index }
     }
 }
@@ -233,7 +240,7 @@ impl<'a> FileWrapper<'a> {
         self.file.size = u32::max(self.pointer, self.file.size);
         manager.write_byte(id, offset, byte)
     }
-    fn write(&mut self, data: &[u8], size: usize) -> Result<(), FileError> {
+    pub fn write(&mut self, data: &[u8], size: usize) -> Result<(), FileError> {
         for i in 0..size {}
         Ok(())
     }
@@ -270,7 +277,7 @@ impl<'a> FileWrapper<'a> {
 }
 
 impl Directory {
-    fn bytes(&self) -> &[u8] {
+    pub fn bytes(&self) -> &[u8] {
         unsafe { slice::from_raw_parts(self as *const Directory as *const u8, BLOCKSIZE) }
     }
     fn from_bytes(bytes: &mut [u8]) -> &mut Directory {
@@ -311,7 +318,7 @@ impl<'a> BlockManager<'a> {
                         [BLOCKSIZE + self.super_block.management_index as usize / 8 + index]
                         as *mut u8 as usize
                         as *mut [u8; BLOCKSIZE]);
-                    memutil::memset(p.as_mut_ptr(), 0, BLOCKSIZE);
+                    rlibc::memset(p.as_mut_ptr(), 0, BLOCKSIZE);
                     p
                 }));
             }

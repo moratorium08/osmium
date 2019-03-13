@@ -13,7 +13,6 @@ pub mod uart;
 pub mod bounded_buffer;
 pub mod csr;
 pub mod elf;
-pub mod file;
 pub mod files;
 pub mod kernel;
 pub mod memlayout;
