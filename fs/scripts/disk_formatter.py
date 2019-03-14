@@ -6,6 +6,7 @@ import logging
 
 N_BLOCKS = 20  # 00
 BLOCK_SIZE = 4096
+MAGIC = b'MORA'
 
 
 def p32(val):
@@ -43,9 +44,54 @@ DIRECTORY_TYPE = 1
 FILE_TYPE = 2
 
 
+class SuperBlock:
+    def __init__(self, root_index, management_index, n_blocks, block_index):
+        self.root_index = root_index
+        self.management_index = management_index
+        self.n_blocks = n_blocks
+        self.block_index = block_index
+
+    def write(self, image):
+        block = b''
+        block += MAGIC
+        block += p32(self.root_index)
+        block += p32(self.management_index)
+        block += p32(self.n_blocks)
+        block += p32(self.block_index)
+        image.write_block_at(block, 0)
+        return 0
+
+
+class Management:
+    def __init__(self, n_blocks, index):
+        self.bits = [0 for i in range(n_blocks // 32 + 1)]
+        self.index = index
+
+    def alloc(self, index):
+        block = index // 32
+        bit = index % 32
+        self.bits[block] |= 1 << bit
+
+    def free(self, index):
+        block = index // 32
+        bit = index % 32
+        self.bits[block] &= ~(1 << bit)
+
+    def write(self, image):
+        block = b''
+        index = self.index
+        for value in self.bits:
+            if len(block) == BLOCK_SIZE:
+                image.write_block_at(block, index)
+                index += 1
+                block = b''
+            block += p32(value)
+        image.write_block_at(block, index)
+
+
 class Data:
     def write(self, image):
-        raise NotImplemented
+        raise NotImplementedError
 
 
 '''
@@ -157,40 +203,19 @@ class File(Data):
                 if len(s) < BLOCK_SIZE:
                     break
 
-            indirect_blocks1 = []
-            indirect_blocks2 = b''
-            direct_block = b''
-            for block in blocks:
-                if len(indirect_blocks2) == BLOCK_SIZE:
-                    b = image.write_block(indirect_blocks2)
-                    indirect_blocks1.append(b)
-                    indirect_blocks2 = b''
-                if len(direct_block) == BLOCK_SIZE:
-                    b = image.write_block(direct_block)
-                    indirect_blocks2 += p32(b)
-                    direct_block = b''
-                direct_block += p32(block)
+            indirect_blocks = []
+            count = 0
+            tmp = b''
+            for index in blocks:
+                if count == (BLOCK_SIZE // 4):
+                    indirect_blocks.append(image.write_block(tmp))
+                    tmp = b''
+                    count = 0
+                tmp += p32(index)
+            if count != 0:
+                indirect_blocks.append(image.write_block(tmp))
 
-            if len(indirect_blocks2) == BLOCK_SIZE:
-                b = image.write_block(indirect_blocks2)
-                indirect_blocks1.append(b)
-                indirect_blocks2 = b''
-            if len(direct_block) == BLOCK_SIZE:
-                b = image.write_block(direct_block)
-                indirect_blocks2 += p32(b)
-                direct_block = b''
-            if len(indirect_blocks2) == BLOCK_SIZE:
-                b = image.write_block(indirect_blocks2)
-                indirect_blocks1.append(b)
-                indirect_blocks2 = b''
-            if len(direct_block) != 0:
-                b = image.write_block(direct_block)
-                indirect_blocks2 += p32(b)
-            if len(indirect_blocks2) != 0:
-                b = image.write_block(indirect_blocks2)
-                indirect_blocks1.append(b)
-
-            self.indirect_blocks = indirect_blocks1
+            self.indirect_blocks = indirect_blocks
             self.size = size
         return self._write(image)
 
@@ -237,6 +262,9 @@ def fill_zero(f, size):
     f.seek(0)
 
 
+MANAGEMENT_INDEX = 1
+
+
 class Image:
 
     def __init__(self, root, disk, n_blocks=N_BLOCKS):
@@ -249,21 +277,37 @@ class Image:
         # super block
         blocks_base_index = N_BLOCKS // (BLOCK_SIZE * 8) + padding + 1
         # free area stack. for debugging simplicity, use from smaller index
-        self.management = list(range(N_BLOCKS - 1, blocks_base_index - 1, -1))
+        self.indices = list(range(N_BLOCKS - 1, blocks_base_index - 1, -1))
+        self.management = Management(self.n_blocks, MANAGEMENT_INDEX)
+        # mark as used at superblock and management block
+        for i in range(blocks_base_index):
+            self.management.alloc(i)
+        self.blocks_base_index = blocks_base_index
 
         # first initialize disk file
         fill_zero(self.disk, (blocks_base_index + N_BLOCKS) * BLOCK_SIZE)
 
     def _alloc_block(self):
-        return self.management.pop()
+        index = self.indices.pop()
+        self.management.alloc(index)
+        return index
 
     def _free_block(self, index):
-        return self.management.append(index)
+        self.management.free(index)
+        self.indices.append(index)
 
     def _write_block_at(self, data, index):
         place = index * BLOCK_SIZE
         self.disk.seek(place)
         self.disk.write(data)
+
+    def write_block_at(self, data, index):
+        if len(data) > BLOCK_SIZE:
+            raise Exception('block size is too large: {} > {}'.format(
+                len(data), BLOCK_SIZE))
+        if index in self.indices:
+            raise Exception('block {} is not for management'.format(index))
+        self._write_block_at(data, index)
 
     def write_block(self, data):
         '''
@@ -288,17 +332,19 @@ class Image:
         return index
 
     def _write_management(self):
-        pass
+        self.management.write(self)
 
     def _write_super_block(self):
-        pass
+        block = SuperBlock(self.root_index, MANAGEMENT_INDEX, self.n_blocks,
+                           self.blocks_base_index)
+        block.write(self)
 
     def _finalize(self):
         self._write_management()
         self._write_super_block()
 
     def generate(self):
-        self.root.write(self)
+        self.root_index = self.root.write(self)
         self._finalize()
 
 
