@@ -1,16 +1,5 @@
 use crate::*;
-use core::convert;
-use core::intrinsics;
 use core::slice;
-
-// dirty and slow
-fn translate_data(a: u8, b: u8, c: u8, d: u8) -> u32 {
-    let a = a as u32;
-    let b = b as u32;
-    let c = c as u32;
-    let d = d as u32;
-    (d << 24) | (c << 16) | (b << 8) | d
-}
 
 pub fn round_up(x: u32, modulo: u32) -> u32 {
     let tmp = x % modulo;
@@ -80,14 +69,17 @@ impl Regular {
         }
         bm.write_block(self.id, fixed)
     }
-    fn get_current_block_id(&self, bm: &mut BlockManager) -> Result<Id, FileError> {
+    fn get_table_entry(&self, bm: &mut BlockManager) -> Result<u32, FileError> {
         let meta_block = self.get_meta_block(bm)?;
         let index = self.current_index();
         let id = meta_block.data[index.0];
         let mut block = bm.read_block(Id(id))?;
 
         let table = as_table_mut(&mut block);
-        Ok(Id(table[index.1]))
+        Ok(table[index.1])
+    }
+    fn get_current_block_id(&self, bm: &mut BlockManager) -> Result<Id, FileError> {
+        Ok(Id(self.get_table_entry(bm)?))
     }
     fn get_current_block(&self, bm: &mut BlockManager) -> Result<Block, FileError> {
         let id = self.get_current_block_id(bm)?;
@@ -116,10 +108,6 @@ impl Regular {
     fn current_offset(&self) -> usize {
         self.pointer as usize % BLOCKSIZE
     }
-    // indirect pointer 1 which is used for first step
-    fn current_block(&self) -> usize {
-        self.pointer as usize / BLOCKSIZE
-    }
     fn current_index(&self) -> Index {
         Index::from_pointer(self.pointer)
     }
@@ -131,7 +119,13 @@ impl Regular {
     }
 
     fn alloc_block(&self, bm: &mut BlockManager, index: Index) -> Result<(), FileError> {
-        unimplemented!()
+        let allocated = bm.alloc_block()?;
+        let meta_block = self.get_meta_block(bm)?;
+        let id = meta_block.data[index.0];
+        let mut block = bm.read_block(Id(id))?;
+        let table = as_table_mut(&mut block);
+        table[index.1] = allocated.0;
+        Ok(())
     }
 
     pub fn write(
@@ -147,6 +141,7 @@ impl Regular {
         let mut written = 0;
         while written < size {
             if self.pointer >= max_writable {
+                self.validate_current_pointer_write()?;
                 self.alloc_block(bm, Index::from_pointer(max_writable))?;
                 max_writable += BLOCKSIZE as u32;
             }

@@ -105,7 +105,7 @@ pub trait BlockManager<'a> {
             let id = Id(k);
             if !self.is_valid(id) {
                 self.mark_as_used(id);
-                self.fill_block(id, 0);
+                self.fill_block(id, 0)?;
                 return Ok(Id(k));
             }
         }
@@ -147,12 +147,12 @@ impl Id {
     }
 }
 
-enum File {
+pub enum File {
     Regular(regular::Regular),
     Direcotry(dir::Directory),
 }
 
-struct FileSystem {
+pub struct FileSystem {
     root: dir::Directory,
 }
 

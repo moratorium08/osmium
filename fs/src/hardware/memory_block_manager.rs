@@ -2,19 +2,17 @@ use crate::*;
 
 pub struct MemoryBlockManager<'a> {
     data: &'a mut [u8; BLOCKSIZE * N_BLOCKS],
-    super_block: &'a mut SuperBlock,
 }
 
 impl<'a> MemoryBlockManager<'a> {
     pub fn new(data: &'a mut [u8; BLOCKSIZE * N_BLOCKS]) -> MemoryBlockManager<'a> {
-        let super_block = unsafe { &mut *(data.as_mut_ptr() as *mut SuperBlock) };
-        MemoryBlockManager { data, super_block }
+        MemoryBlockManager { data }
     }
 }
 
 impl<'a> BlockManager<'a> for MemoryBlockManager<'a> {
     fn super_block(&mut self) -> &'a mut SuperBlock {
-        self.super_block()
+        unsafe { &mut *(self.data.as_mut_ptr() as *mut SuperBlock) }
     }
 
     fn fill_block(&mut self, id: Id, val: u8) -> Result<(), FileError> {
@@ -59,7 +57,6 @@ impl<'a> BlockManager<'a> for MemoryBlockManager<'a> {
         let i = k / 8;
         let j = k % 8;
         let index = BLOCKSIZE + i as usize;
-        let x = (self.data[index] >> j) & 1;
         self.data[index] |= 1 << j;
     }
 
@@ -68,7 +65,6 @@ impl<'a> BlockManager<'a> for MemoryBlockManager<'a> {
         let i = k / 8;
         let j = k % 8;
         let index = BLOCKSIZE + i as usize;
-        let x = (self.data[index] >> j) & 1;
         self.data[index] &= !(1 << j);
     }
 }
