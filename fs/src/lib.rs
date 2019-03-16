@@ -1,5 +1,6 @@
 #![no_std]
 #![feature(core_intrinsics)]
+#![feature(bind_by_move_pattern_guards)]
 #[macro_use]
 extern crate bitflags;
 extern crate rlibc;
@@ -7,13 +8,16 @@ extern crate rlibc;
 pub mod dir;
 pub mod hardware;
 pub mod regular;
+pub mod filesystem;
 
 use core::slice;
+use core::ops;
 
 const BLOCKSIZE: usize = 4096;
 const N_BLOCKS: usize = 100000;
 const N_POINTER_PER_DIR: usize = (BLOCKSIZE / 4) - 256 / 4 - 1 - 1 - 1;
 const N_POINTER_PER_FILE: usize = (BLOCKSIZE / 4) - 256 / 4 - 1 - 1 - 1;
+const N_DUMMIES: usize = (BLOCKSIZE / 4) - 256 / 4 - 1 - 1;
 
 pub enum FileError {
     NoSpace,
@@ -49,14 +53,14 @@ fn as_table_mut<'a>(block: &'a mut Block) -> &'a mut [u32] {
 }
 
 pub enum Type {
-    File,
+    Regular,
     Directory,
 }
 
 impl Type {
     fn from_repr(t: TypeRepr) -> Result<Type, FileError> {
         if t == 1 {
-            Ok(Type::File)
+            Ok(Type::Regular)
         } else if t == 2 {
             Ok(Type::Directory)
         } else {
@@ -65,7 +69,7 @@ impl Type {
     }
     fn to_repr(self) -> TypeRepr {
         match self {
-            Type::File => 1,
+            Type::Regular => 1,
             Type::Directory => 2,
         }
     }
@@ -160,8 +164,36 @@ pub enum File {
     Direcotry(dir::Directory),
 }
 
-pub struct FileSystem {
-    root: dir::Directory,
+impl File {
+    fn from_id(bm: &mut BlockManager, id: Id) -> Result<File, FileError> {
+        let file = File::get_file(bm, id)?;
+        match Type::from_repr(file.ty)? {
+            Type::Regular => Ok(File::Regular(regular::Regular::new(id))),
+            Type::Directory => Ok(File::Direcotry(dir::Directory::new(id))),
+        }
+    }
+}
+
+#[repr(C)]
+pub struct FileRaw {
+    ty: TypeRepr,
+    dummy1: u8,
+    name: [u8; 256],
+    permission: u16,
+    pub owner: u16,
+    pub group: u16,
+    dummy2: [u32; N_DUMMIES],
+}
+
+impl FileLike for File {
+    type Raw = FileRaw;
+
+    fn my_id(&self) -> Id {
+        match self {
+            File::Regular(r) => r.my_id(),
+            File::Direcotry(d) => d.my_id(),
+        }
+    }
 }
 
 pub trait FileLike {
@@ -169,9 +201,13 @@ pub trait FileLike {
 
     fn my_id(&self) -> Id;
 
-    fn get_meta_block<'a>(&self, bm: &mut BlockManager) -> Result<&'a mut Self::Raw, FileError> {
-        let block = &mut bm.read_block(self.my_id())?;
+    fn get_file<'a>(bm: &mut BlockManager, id: Id) -> Result<&'a mut Self::Raw, FileError> {
+        let block = &mut bm.read_block(id)?;
         Ok(unsafe { &mut *(block.as_mut_ptr() as *mut Self::Raw) })
+    } 
+
+    fn get_meta_block<'a>(&self, bm: &mut BlockManager) -> Result<&'a mut Self::Raw, FileError> {
+        Self::get_file(bm, self.my_id())
     }
     fn write_meta_block(
         &self,
@@ -195,72 +231,21 @@ pub struct PathObject<'a> {
     current_pos: usize,
 }
 
-/*
-impl FileSystem{
-    pub fn search_inner<'b>(
-        &'b self,
-        name: &[u8; 256],
-        name_idx: usize,
-        dir: &'b mut Directory,
-    ) -> Result<DataWrapper<'b>, FileError> {
-        'outer: for id in dir.files.iter() {
-            match self.get(*id) {
-                Ok(Data::Directory(d)) => {
-                    let mut tmp_idx = name_idx;
-                    for i in 0..(256 - name_idx) {
-                        if name[name_idx + i] != d.name[i] {
-                            // next dir
-                            if name[tmp_idx] != b'/' {
-                                return self.search_inner(name, tmp_idx, d);
-                            }
-                            // name is not equal
-                            continue 'outer;
-                        }
-                        if d.name[i] == 0 {
-                            break;
-                        }
-                        tmp_idx += 1;
-                    }
-                    return Ok(DataWrapper::Directory(DirectoryWrapper::from(d, *id)));
-                }
-                Ok(Data::File(f)) => {
-                    let mut tmp_idx = name_idx;
-                    for i in 0..(256 - name_idx) {
-                        if name[name_idx + i] != f.name[i] {
-                            continue 'outer;
-                        }
-                        if f.name[i] == 0 {
-                            break;
-                        }
-                        tmp_idx += 1;
-                    }
-                    return Ok(DataWrapper::File(FileWrapper::from(f, *id)));
-                }
-                Err(e) => return Err(e),
-            }
-        }
-        Err(FileError::NotFound)
+impl<'a> PathObject<'a> {
+    pub fn new(name: &'a [u8]) -> PathObject<'a> {
+        PathObject{name, current_pos: 0}
     }
-
-    pub fn search(&mut self, name: [u8; 256]) -> Result<File, FileError> {
-        let root_id = self.super_block.root_directory_index;
-
-        let root_data = self.get(root_id)?;
-        let dir: &mut Directory;
-        match root_data {
-            Data::Directory(d) => dir = d,
-            _ => return Err(FileError::BrokenFileSystem),
-        }
-
-        if name[0] != b'/' {
-            return Err(FileError::IllegalPath);
-        }
-
-        let mut idx = 1;
-        self.search_inner(&name, idx, dir);
-
-        Err(FileError::NotFound)
+    pub fn countup(&mut self, count: usize) {
+        self.current_pos += count;
+    }
+    pub fn is_end(&self) -> bool {
+        self.name[self.current_pos] == 0
     }
 }
 
-*/
+impl <'a>core::ops::Index<usize> for PathObject<'a> {
+    type Output = u8;
+    fn index(&self, i: usize) -> &Self::Output {
+        &self.name[self.current_pos + i]
+    }
+}

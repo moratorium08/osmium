@@ -13,6 +13,7 @@ pub struct DirectoryRaw {
     files: [u32; N_POINTER_PER_DIR],
 }
 
+#[derive(Clone)]
 pub struct Directory {
     id: Id,
 }
@@ -42,6 +43,9 @@ impl Index {
 }
 
 impl Directory {
+    pub fn new(id: Id) -> Directory {
+        Directory{id}
+    }
     pub fn create(
         bm: &mut BlockManager,
         name: [u8; 256],
@@ -52,7 +56,7 @@ impl Directory {
         let meta_block = directory.get_meta_block(bm)?;
         meta_block.name = name;
         meta_block.permission = permission.bits();
-        meta_block.ty = Type::File.to_repr();
+        meta_block.ty = Type::Directory.to_repr();
         meta_block.file_count = 0;
         directory.write_meta_block(bm, meta_block)?;
         // TBD: owner/ group
@@ -173,23 +177,52 @@ impl Directory {
                 Some((i, _)) if cnt < n => {
                     index = i;
                     cnt += 1;
-                }, 
+                }
                 Some((_, id)) => {
                     return Ok(Some(id));
-                },
+                }
                 None => {
                     return Ok(None);
                 }
             }
         }
-
     }
 
-    pub fn search(
+    pub fn search<'a>(
         &self,
         bm: &mut BlockManager,
-        path: PathObject,
-    ) -> Result<(Id, PathObject), FileError> {
-        unimplemented!();
+        mut path: PathObject<'a>,
+    ) -> Result<Option<(Id, PathObject<'a>)>, FileError> {
+        let mut index = Index::from_block_id(0);
+
+        'outer: loop {
+            match self.find_next_block(bm, index)? {
+                Some((next_index, id)) => {
+                    index = next_index; 
+                    let file = File::get_file(bm, id)?;
+                    for i in 0..256 {
+                        if path[i] != file.name[i] {
+                            // maybe next dir
+                            if path[i] == b'/' {
+                                if file.ty == Type::Directory.to_repr() {
+                                    path.countup(i + 1);
+                                    return Ok(Some((id, path)));
+                                } else {
+                                    return Ok(None)
+                                }
+                            }
+                            // name is not equal
+                            continue 'outer;
+                        }
+                        if path[i] == 0 {
+                            return Ok(Some((id, path)));
+                        }
+                    }
+                }
+                None => {
+                    return Ok(None);
+                }
+            }
+        }
     }
 }

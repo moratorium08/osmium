@@ -53,6 +53,9 @@ impl FileLike for Regular {
 }
 
 impl Regular {
+    pub fn new(id: Id) -> Regular {
+        Regular {id, pointer:0}
+    }
     fn get_table_entry(&self, bm: &mut BlockManager) -> Result<u32, FileError> {
         let meta_block = self.get_meta_block(bm)?;
         let index = self.current_index();
@@ -83,7 +86,7 @@ impl Regular {
         let meta_block = regular.get_meta_block(bm)?;
         meta_block.name = name;
         meta_block.permission = permission.bits();
-        meta_block.ty = Type::File.to_repr();
+        meta_block.ty = Type::Regular.to_repr();
         meta_block.size = 0;
         regular.write_meta_block(bm, meta_block)?;
         // TBD: owner/ group
