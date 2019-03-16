@@ -32,11 +32,6 @@ pub struct Regular {
     pointer: u32,
 }
 
-fn as_table_mut<'a>(block: &'a mut Block) -> &'a mut [u32] {
-    let p = block.as_mut_ptr() as *mut u32;
-    unsafe { slice::from_raw_parts_mut(p, BLOCKSIZE / 4) }
-}
-
 struct Index(usize, usize);
 
 impl Index {
@@ -49,26 +44,15 @@ impl Index {
     }
 }
 
+impl FileLike for Regular {
+    type Raw = RegularRaw;
+
+    fn my_id(&self) -> Id {
+        self.id
+    }
+}
+
 impl Regular {
-    fn get_meta_block<'a>(&self, bm: &mut BlockManager) -> Result<&'a mut RegularRaw, FileError> {
-        let block = &mut bm.read_block(self.id)?;
-        Ok(unsafe { &mut *(block.as_mut_ptr() as *mut RegularRaw) })
-    }
-    fn write_meta_block(
-        &self,
-        bm: &mut BlockManager,
-        meta_block: &RegularRaw,
-    ) -> Result<(), FileError> {
-        let meta_block = unsafe {
-            &*(slice::from_raw_parts((meta_block as *const RegularRaw) as *const u8, BLOCKSIZE))
-        };
-        // hmm.. this translation should be removed.
-        let mut fixed = [0u8; BLOCKSIZE];
-        for i in 0..BLOCKSIZE {
-            fixed[i] = meta_block[i];
-        }
-        bm.write_block(self.id, fixed)
-    }
     fn get_table_entry(&self, bm: &mut BlockManager) -> Result<u32, FileError> {
         let meta_block = self.get_meta_block(bm)?;
         let index = self.current_index();
@@ -81,14 +65,13 @@ impl Regular {
     fn get_current_block_id(&self, bm: &mut BlockManager) -> Result<Id, FileError> {
         Ok(Id(self.get_table_entry(bm)?))
     }
-    fn get_current_block(&self, bm: &mut BlockManager) -> Result<Block, FileError> {
-        let id = self.get_current_block_id(bm)?;
-        bm.read_block(id)
-    }
-
     fn write_current_block(&self, bm: &mut BlockManager, block: Block) -> Result<(), FileError> {
         let id = self.get_current_block_id(bm)?;
         bm.write_block(id, block)
+    }
+    fn get_current_block(&self, bm: &mut BlockManager) -> Result<Block, FileError> {
+        let id = self.get_current_block_id(bm)?;
+        bm.read_block(id)
     }
     pub fn create(
         bm: &mut BlockManager,
@@ -102,6 +85,7 @@ impl Regular {
         meta_block.permission = permission.bits();
         meta_block.ty = Type::File.to_repr();
         meta_block.size = 0;
+        regular.write_meta_block(bm, meta_block)?;
         // TBD: owner/ group
         Ok(regular)
     }
@@ -125,6 +109,7 @@ impl Regular {
         let mut block = bm.read_block(Id(id))?;
         let table = as_table_mut(&mut block);
         table[index.1] = allocated.0;
+        bm.write_block(Id(id), block)?;
         Ok(())
     }
 
@@ -155,6 +140,8 @@ impl Regular {
             self.write_current_block(bm, block)?;
             offset %= BLOCKSIZE;
         }
+        meta_block.size = if meta_block.size > self.pointer {meta_block.size} else {self.pointer};
+        self.write_meta_block(bm, meta_block)?;
         Ok(())
     }
 
@@ -203,5 +190,12 @@ impl Regular {
             self.pointer = new_ptr as u32;
             Ok(())
         }
+    }
+
+    pub fn rename(&mut self, bm: &mut BlockManager, name: [u8; 256]) -> Result<(), FileError> {
+        let meta_block = self.get_meta_block(bm)?;
+        meta_block.name = name;
+        self.write_meta_block(bm, meta_block)?;
+        Ok(())
     }
 }

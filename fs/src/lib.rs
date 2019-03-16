@@ -8,10 +8,12 @@ pub mod dir;
 pub mod hardware;
 pub mod regular;
 
+use core::slice;
+
 const BLOCKSIZE: usize = 4096;
 const N_BLOCKS: usize = 100000;
-const N_POINTER_PER_DIR: usize = (BLOCKSIZE / 4) - 256 / 4 - 1 - 1;
-const N_POINTER_PER_FILE: usize = (BLOCKSIZE / 4) - 256 / 4 - 1 - 1;
+const N_POINTER_PER_DIR: usize = (BLOCKSIZE / 4) - 256 / 4 - 1 - 1 - 1;
+const N_POINTER_PER_FILE: usize = (BLOCKSIZE / 4) - 256 / 4 - 1 - 1 - 1;
 
 pub enum FileError {
     NoSpace,
@@ -39,6 +41,12 @@ bitflags! {
 type TypeRepr = u8;
 
 type Block = [u8; BLOCKSIZE];
+
+// this should be removed
+fn as_table_mut<'a>(block: &'a mut Block) -> &'a mut [u32] {
+    let p = block.as_mut_ptr() as *mut u32;
+    unsafe { slice::from_raw_parts_mut(p, BLOCKSIZE / 4) }
+}
 
 pub enum Type {
     File,
@@ -154,6 +162,37 @@ pub enum File {
 
 pub struct FileSystem {
     root: dir::Directory,
+}
+
+pub trait FileLike {
+    type Raw;
+
+    fn my_id(&self) -> Id;
+
+    fn get_meta_block<'a>(&self, bm: &mut BlockManager) -> Result<&'a mut Self::Raw, FileError> {
+        let block = &mut bm.read_block(self.my_id())?;
+        Ok(unsafe { &mut *(block.as_mut_ptr() as *mut Self::Raw) })
+    }
+    fn write_meta_block(
+        &self,
+        bm: &mut BlockManager,
+        meta_block: &Self::Raw,
+    ) -> Result<(), FileError> {
+        let meta_block = unsafe {
+            &*(slice::from_raw_parts((meta_block as *const Self::Raw) as *const u8, BLOCKSIZE))
+        };
+        // hmm.. this translation should be removed.
+        let mut fixed = [0u8; BLOCKSIZE];
+        for i in 0..BLOCKSIZE {
+            fixed[i] = meta_block[i];
+        }
+        bm.write_block(self.my_id(), fixed)
+    }
+}
+
+pub struct PathObject<'a> {
+    name: &'a [u8],
+    current_pos: usize,
 }
 
 /*
