@@ -1,11 +1,12 @@
 #![no_std]
+#![feature(core_intrinsics)]
 #[macro_use]
 extern crate bitflags;
 extern crate rlibc;
 
 pub mod dir;
-pub mod regular;
 pub mod hardware;
+pub mod regular;
 
 const BLOCKSIZE: usize = 4096;
 const N_BLOCKS: usize = 100000;
@@ -36,6 +37,8 @@ bitflags! {
 }
 
 type TypeRepr = u8;
+
+type Block = [u8; BLOCKSIZE];
 
 pub enum Type {
     File,
@@ -84,9 +87,46 @@ pub struct SuperBlock {
     dummy: [u32; BLOCKSIZE / 4 - 4],
 }
 
-trait BlockManager {
-}
+pub trait BlockManager<'a> {
+    fn super_block(&mut self) -> &'a mut SuperBlock;
+    fn is_valid(&self, id: Id) -> bool;
+    fn mark_as_used(&mut self, id: Id);
+    fn mark_as_unused(&mut self, id: Id);
+    fn fill_block(&mut self, id: Id, val: u8) -> Result<(), FileError>;
+    fn read_block(&mut self, id: Id) -> Result<Block, FileError>;
+    fn write_data(&mut self, id: Id, data: &[u8], offset: u32, size: u32) -> Result<(), FileError>;
 
+    fn write_block(&mut self, id: Id, block: Block) -> Result<(), FileError> {
+        self.write_data(id, &block, 0, BLOCKSIZE as u32)
+    }
+
+    fn alloc_block(&mut self) -> Result<Id, FileError> {
+        for k in 0..self.super_block().n_blocks {
+            let id = Id(k);
+            if !self.is_valid(id) {
+                self.mark_as_used(id);
+                self.fill_block(id, 0);
+                return Ok(Id(k));
+            }
+        }
+        Err(FileError::NoSpace)
+    }
+
+    fn free_block(&mut self, id: Id) -> Result<(), FileError> {
+        id.check_is_not_super()?;
+        self.valid_or_err(id)?;
+        self.mark_as_unused(id);
+        Ok(())
+    }
+
+    fn valid_or_err(&self, id: Id) -> Result<(), FileError> {
+        if self.is_valid(id) {
+            Ok(())
+        } else {
+            Err(FileError::InternalError)
+        }
+    }
+}
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Id(u32);
@@ -97,15 +137,27 @@ impl Id {
     }
 }
 
-struct File {
-    Regular(regular::Regular)
+impl Id {
+    fn check_is_not_super(&self) -> Result<(), FileError> {
+        if self.is_super() {
+            Err(FileError::InternalError)
+        } else {
+            Ok(())
+        }
+    }
 }
 
-struct<'a> FileSystem<'a> {
-    root: dir::Directory<'a>,
+enum File {
+    Regular(regular::Regular),
+    Direcotry(dir::Directory),
 }
 
-impl FileSystem {
+struct FileSystem {
+    root: dir::Directory,
+}
+
+/*
+impl FileSystem{
     pub fn search_inner<'b>(
         &'b self,
         name: &[u8; 256],
@@ -171,3 +223,5 @@ impl FileSystem {
         Err(FileError::NotFound)
     }
 }
+
+*/

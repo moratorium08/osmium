@@ -1,50 +1,127 @@
-use crate::FileError;
+use crate::*;
+use core::convert;
+use core::intrinsics;
+use core::slice;
+
+// dirty and slow
+fn translate_data(a: u8, b: u8, c: u8, d: u8) -> u32 {
+    let a = a as u32;
+    let b = b as u32;
+    let c = c as u32;
+    let d = d as u32;
+    (d << 24) | (c << 16) | (b << 8) | d
+}
+
+pub fn round_up(x: u32, modulo: u32) -> u32 {
+    let tmp = x % modulo;
+    let y = modulo - if tmp == 0 { modulo } else { tmp };
+    x + y
+}
+
+#[test]
+fn test_round_up() {
+    assert_eq!(round_up(3000, 4096), 4096);
+    assert_eq!(round_up(0, 4096), 0);
+    assert_eq!(round_up(4096, 4096), 4096);
+    assert_eq!(round_up(4096, 4096), 4096);
+}
 
 #[repr(C)]
 pub struct RegularRaw {
-    ty: TypeRepr,
-    name: [u8; 256],
-    authority: Flag,
-    dummy2: u8,
-    dummy3: u8,
+    ty: u8,
+    dummy1: u8,
+    pub name: [u8; 256],
+    pub permission: u16,
+    pub owner: u16,
+    pub group: u16,
     size: u32,
-    data: [Id; N_POINTER_PER_FILE],
+    data: [u32; N_POINTER_PER_FILE],
 }
 
-impl RegularRaw {
-    fn bytes(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts(self as *const File as *const u8, BLOCKSIZE) }
-    }
-    fn from_bytes(bytes: &mut [u8]) -> &mut File {
-        unsafe { &mut *(bytes.as_mut_ptr() as *mut File) }
-    }
-}
-
-pub struct Regular<'a> {
-    pub index: Id,
+pub struct Regular {
+    pub id: Id,
     pointer: u32,
 }
 
-impl<'a> Regular<'a> {
-    fn new(bm: &'a mut BlockManager, name: [u8; 256]) -> Result<Regular<'a>, FileError> {
-        match bm.alloc_block() {
-            Some((index, file)) => {
-                let file = File::from_bytes(file);
-                file.name = name;
-                Ok(FileWrapper {
-                    index,
-                    file,
-                    pointer: 0,
-                })
-            }
-            None => return Err(FileError::NoSpace),
+fn as_table_mut<'a>(block: &'a mut Block) -> &'a mut [u32] {
+    let p = block.as_mut_ptr() as *mut u32;
+    unsafe { slice::from_raw_parts_mut(p, BLOCKSIZE / 4) }
+}
+
+struct Index(usize, usize);
+
+impl Index {
+    fn from_block_id(id: usize) -> Index {
+        Index(id / (BLOCKSIZE / 4), id % (BLOCKSIZE / 4))
+    }
+    fn from_pointer(p: u32) -> Index {
+        let id = p as usize / BLOCKSIZE;
+        Index::from_block_id(id)
+    }
+}
+
+impl Regular {
+    fn get_meta_block<'a>(&self, bm: &mut BlockManager) -> Result<&'a mut RegularRaw, FileError> {
+        let block = &mut bm.read_block(self.id)?;
+        Ok(unsafe { &mut *(block.as_mut_ptr() as *mut RegularRaw) })
+    }
+    fn write_meta_block(
+        &self,
+        bm: &mut BlockManager,
+        meta_block: &RegularRaw,
+    ) -> Result<(), FileError> {
+        let meta_block = unsafe {
+            &*(slice::from_raw_parts((meta_block as *const RegularRaw) as *const u8, BLOCKSIZE))
+        };
+        // hmm.. this translation should be removed.
+        let mut fixed = [0u8; BLOCKSIZE];
+        for i in 0..BLOCKSIZE {
+            fixed[i] = meta_block[i];
         }
+        bm.write_block(self.id, fixed)
+    }
+    fn get_current_block_id(&self, bm: &mut BlockManager) -> Result<Id, FileError> {
+        let meta_block = self.get_meta_block(bm)?;
+        let index = self.current_index();
+        let id = meta_block.data[index.0];
+        let mut block = bm.read_block(Id(id))?;
+
+        let table = as_table_mut(&mut block);
+        Ok(Id(table[index.1]))
+    }
+    fn get_current_block(&self, bm: &mut BlockManager) -> Result<Block, FileError> {
+        let id = self.get_current_block_id(bm)?;
+        bm.read_block(id)
+    }
+
+    fn write_current_block(&self, bm: &mut BlockManager, block: Block) -> Result<(), FileError> {
+        let id = self.get_current_block_id(bm)?;
+        bm.write_block(id, block)
+    }
+    pub fn create(
+        bm: &mut BlockManager,
+        name: [u8; 256],
+        permission: Flag,
+    ) -> Result<Regular, FileError> {
+        let id = bm.alloc_block()?;
+        let regular = Regular { id, pointer: 0 };
+        let meta_block = regular.get_meta_block(bm)?;
+        meta_block.name = name;
+        meta_block.permission = permission.bits();
+        meta_block.ty = Type::File.to_repr();
+        meta_block.size = 0;
+        // TBD: owner/ group
+        Ok(regular)
     }
     fn current_offset(&self) -> usize {
         self.pointer as usize % BLOCKSIZE
     }
-    fn current_index(&self) -> usize {
+    // indirect pointer 1 which is used for first step
+    fn current_block(&self) -> usize {
         self.pointer as usize / BLOCKSIZE
+    }
+    fn current_index(&self) -> Index {
+        Index::from_pointer(self.pointer)
     }
     fn validate_current_pointer_write(&self) -> Result<(), FileError> {
         if self.pointer >= (BLOCKSIZE * N_POINTER_PER_FILE) as u32 {
@@ -52,69 +129,84 @@ impl<'a> Regular<'a> {
         }
         Ok(())
     }
-    fn validate_current_pointer_read(&self) -> Result<(), FileError> {
-        if self.pointer >= self.file.size {
-            return Err(FileError::EndOfFile);
-        }
-        Ok(())
-    }
-    fn read_byte(&mut self, byte: u8, manager: &mut BlockManager) -> Result<u8, FileError> {
-        self.validate_current_pointer_read()?;
-        let offset = self.current_offset();
-        let ptr_index = self.current_index();
 
-        let id = self.file.data[ptr_index];
-        manager.read_byte(id, offset)
+    fn alloc_block(&self, bm: &mut BlockManager, index: Index) -> Result<(), FileError> {
+        unimplemented!()
     }
-    fn write_byte(&mut self, byte: u8, manager: &mut BlockManager) -> Result<(), FileError> {
-        if self.pointer >= (BLOCKSIZE * N_POINTER_PER_FILE) as u32 {
-            return Err(FileError::TooLarge);
-        }
-        let offset = self.current_offset();
-        let ptr_index = self.current_index();
-        if offset as u32 == 0 {
-            match manager.alloc_block() {
-                Some((i, f)) => self.file.data[ptr_index] = i,
-                None => return Err(FileError::NoSpace),
+
+    pub fn write(
+        &mut self,
+        bm: &mut BlockManager,
+        data: &[u8],
+        size: usize,
+    ) -> Result<(), FileError> {
+        let meta_block = self.get_meta_block(bm)?;
+        let mut max_writable = round_up(meta_block.size, BLOCKSIZE as u32);
+
+        let mut offset = self.current_offset();
+        let mut written = 0;
+        while written < size {
+            if self.pointer >= max_writable {
+                self.alloc_block(bm, Index::from_pointer(max_writable))?;
+                max_writable += BLOCKSIZE as u32;
             }
+            let mut block = self.get_current_block(bm)?;
+            while written < size && offset < BLOCKSIZE {
+                block[offset] = data[written];
+                offset += 1;
+                written += 1;
+                self.pointer += 1;
+            }
+            self.write_current_block(bm, block)?;
+            offset %= BLOCKSIZE;
         }
-        let id = self.file.data[ptr_index];
-        self.pointer += 1;
-        self.file.size = u32::max(self.pointer, self.file.size);
-        manager.write_byte(id, offset, byte)
-    }
-    pub fn write(&mut self, data: &[u8], size: usize) -> Result<(), FileError> {
-        for i in 0..size {}
         Ok(())
     }
-    fn read(&mut self, data: &mut [u8], size: usize) -> Result<(), FileError> {
+
+    pub fn read(
+        &mut self,
+        bm: &mut BlockManager,
+        data: &mut [u8],
+        size: usize,
+    ) -> Result<(), FileError> {
+        let meta_block = self.get_meta_block(bm)?;
+        let max_readable = meta_block.size;
+
+        let mut offset = self.current_offset();
+        let mut written = 0;
+        while written < size {
+            let block = self.get_current_block(bm)?;
+            while written < size && offset < BLOCKSIZE {
+                if self.pointer >= max_readable {
+                    return Err(FileError::EndOfFile);
+                }
+                data[written] = block[offset];
+                // a little verbose (for efficiency)
+                offset += 1;
+                written += 1;
+                self.pointer += 1;
+            }
+            offset %= BLOCKSIZE;
+        }
+        self.write_meta_block(bm, meta_block)?;
         Ok(())
     }
-    fn seek(&mut self, seek: i32, manager: &mut BlockManager) -> Result<(), FileError> {
-        let new_ptr = (self.pointer as i32) + seek;
+
+    pub fn seek(&mut self, bm: &mut BlockManager, offset: i32) -> Result<(), FileError> {
+        let new_ptr = (self.pointer as i32) + offset;
 
         if new_ptr < 0 || new_ptr as usize > BLOCKSIZE * N_POINTER_PER_FILE {
             Err(FileError::InvalidOffset)
         } else {
-            for i in 0..N_POINTER_PER_FILE {
-                if self.file.data[i].is_super() {
-                    match manager.alloc_block() {
-                        Some((id, _)) => {
-                            self.file.data[i] = id;
-                        }
-                        None => return Err(FileError::NoSpace),
-                    }
+            let meta_block = self.get_meta_block(bm)?;
+
+            for i in 0..((new_ptr as usize) / BLOCKSIZE) {
+                if meta_block.data[i] == 0 {
+                    self.alloc_block(bm, Index::from_block_id(i))?;
                 }
             }
             self.pointer = new_ptr as u32;
             Ok(())
-        }
-    }
-    fn from(file: &'a mut RegularRaw, index: Id) -> Regular{
-        FileWrapper {
-            file,
-            index,
-            pointer: 0,
         }
     }
 }

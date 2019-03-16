@@ -13,20 +13,12 @@ pub struct DirectoryRaw {
     files: [Id; N_POINTER_PER_DIR],
 }
 
-impl DirectoryRaw {
-    pub fn bytes(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts(self as *const Directory as *const u8, BLOCKSIZE) }
-    }
-    fn from_bytes(bytes: &mut [u8]) -> &mut Directory {
-        unsafe { &mut *(bytes.as_mut_ptr() as *mut Directory) }
-    }
-}
-
-pub struct Directory<'a> {
+pub struct Directory{
     index: Id,
 }
 
-impl<'a> Directory<'a> {
+/*
+impl Directory {
     pub fn new(
         bm: &'a mut BlockManager,
         name: [u8; 256],
@@ -50,6 +42,7 @@ impl<'a> Directory<'a> {
         self.dir.file_count += 1;
         Ok(())
     }
+
     pub fn list_files(&self) -> slice::Iter<Id> {
         (&self.dir.files).iter()
     }
@@ -58,3 +51,4 @@ impl<'a> Directory<'a> {
         DirectoryWrapper { dir, index }
     }
 }
+*/
