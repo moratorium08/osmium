@@ -1,5 +1,4 @@
 use crate::*;
-use core::slice;
 
 #[repr(C)]
 pub struct DirectoryRaw {
@@ -36,6 +35,7 @@ impl Index {
     fn to_block_id(&self) -> usize {
         self.0 * (BLOCKSIZE / 4) + self.1
     }
+    #[allow(dead_code)]
     fn from_pointer(p: u32) -> Index {
         let id = p as usize / BLOCKSIZE;
         Index::from_block_id(id)
@@ -44,7 +44,7 @@ impl Index {
 
 impl Directory {
     pub fn new(id: Id) -> Directory {
-        Directory{id}
+        Directory { id }
     }
     pub fn create(
         bm: &mut BlockManager,
@@ -198,7 +198,7 @@ impl Directory {
         'outer: loop {
             match self.find_next_block(bm, index)? {
                 Some((next_index, id)) => {
-                    index = next_index; 
+                    index = next_index;
                     let file = File::get_file(bm, id)?;
                     for i in 0..256 {
                         if path[i] != file.name[i] {
@@ -208,7 +208,7 @@ impl Directory {
                                     path.countup(i + 1);
                                     return Ok(Some((id, path)));
                                 } else {
-                                    return Ok(None)
+                                    return Ok(None);
                                 }
                             }
                             // name is not equal

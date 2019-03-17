@@ -1,5 +1,4 @@
 use crate::*;
-use core::slice;
 
 pub fn round_up(x: u32, modulo: u32) -> u32 {
     let tmp = x % modulo;
@@ -54,7 +53,7 @@ impl FileLike for Regular {
 
 impl Regular {
     pub fn new(id: Id) -> Regular {
-        Regular {id, pointer:0}
+        Regular { id, pointer: 0 }
     }
     fn get_table_entry(&self, bm: &mut BlockManager) -> Result<u32, FileError> {
         let meta_block = self.get_meta_block(bm)?;
@@ -143,7 +142,11 @@ impl Regular {
             self.write_current_block(bm, block)?;
             offset %= BLOCKSIZE;
         }
-        meta_block.size = if meta_block.size > self.pointer {meta_block.size} else {self.pointer};
+        meta_block.size = if meta_block.size > self.pointer {
+            meta_block.size
+        } else {
+            self.pointer
+        };
         self.write_meta_block(bm, meta_block)?;
         Ok(())
     }

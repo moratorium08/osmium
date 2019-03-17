@@ -6,12 +6,11 @@ extern crate bitflags;
 extern crate rlibc;
 
 pub mod dir;
+pub mod filesystem;
 pub mod hardware;
 pub mod regular;
-pub mod filesystem;
 
 use core::slice;
-use core::ops;
 
 const BLOCKSIZE: usize = 4096;
 const N_BLOCKS: usize = 100000;
@@ -19,6 +18,7 @@ const N_POINTER_PER_DIR: usize = (BLOCKSIZE / 4) - 256 / 4 - 1 - 1 - 1;
 const N_POINTER_PER_FILE: usize = (BLOCKSIZE / 4) - 256 / 4 - 1 - 1 - 1;
 const N_DUMMIES: usize = (BLOCKSIZE / 4) - 256 / 4 - 1 - 1;
 
+#[derive(Debug)]
 pub enum FileError {
     NoSpace,
     InvalidOffset,
@@ -29,6 +29,7 @@ pub enum FileError {
     BrokenFileSystem,
     NotFound,
     IllegalPath,
+    IllegalType,
 }
 
 bitflags! {
@@ -92,10 +93,10 @@ impl Type {
 
 #[repr(C)]
 pub struct SuperBlock {
-    root_directory_index: Id,
-    management_index: u32,
-    n_blocks: u32,
-    block_index: u32,
+    pub root_directory_index: u32,
+    pub management_index: u32,
+    pub n_blocks: u32,
+    pub block_index: u32,
     dummy: [u32; BLOCKSIZE / 4 - 4],
 }
 
@@ -204,7 +205,7 @@ pub trait FileLike {
     fn get_file<'a>(bm: &mut BlockManager, id: Id) -> Result<&'a mut Self::Raw, FileError> {
         let block = &mut bm.read_block(id)?;
         Ok(unsafe { &mut *(block.as_mut_ptr() as *mut Self::Raw) })
-    } 
+    }
 
     fn get_meta_block<'a>(&self, bm: &mut BlockManager) -> Result<&'a mut Self::Raw, FileError> {
         Self::get_file(bm, self.my_id())
@@ -233,7 +234,10 @@ pub struct PathObject<'a> {
 
 impl<'a> PathObject<'a> {
     pub fn new(name: &'a [u8]) -> PathObject<'a> {
-        PathObject{name, current_pos: 0}
+        PathObject {
+            name,
+            current_pos: 0,
+        }
     }
     pub fn countup(&mut self, count: usize) {
         self.current_pos += count;
@@ -243,7 +247,7 @@ impl<'a> PathObject<'a> {
     }
 }
 
-impl <'a>core::ops::Index<usize> for PathObject<'a> {
+impl<'a> core::ops::Index<usize> for PathObject<'a> {
     type Output = u8;
     fn index(&self, i: usize) -> &Self::Output {
         &self.name[self.current_pos + i]
